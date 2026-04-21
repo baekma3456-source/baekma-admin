@@ -544,7 +544,7 @@ async function doLogin() {
     if (error) throw error;
 
     // role 확인
-    const { data: userRow, error: ue } = await supabase
+    const { data: userRow, error: ue } = await _supabase
       .from('app_user').select('*').eq('username', data.user.email).single();
     if (ue || !userRow) throw new Error('등록된 계정 정보가 없습니다.');
     if (userRow.role !== '위원장') throw new Error('위원장 계정만 접속할 수 있습니다.');
@@ -578,7 +578,7 @@ document.getElementById('login-pw').addEventListener('keydown', e => {
 // 세션 복원
 _supabase.auth.getSession().then(async ({ data: { session } }) => {
   if (!session) return;
-  const { data: userRow } = await supabase
+  const { data: userRow } = await _supabase
     .from('app_user').select('*').eq('username', session.user.email).single();
   if (!userRow || userRow.role !== '위원장' || !userRow.is_active) return;
   document.getElementById('user-name').textContent = userRow.name;
@@ -655,11 +655,11 @@ async function loadDashboardData() {
   dashBody.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
 
   // 전체 활성 연번
-  const { count: totalYeonbun } = await supabase
+  const { count: totalYeonbun } = await _supabase
     .from('yeonbun').select('*', { count: 'exact', head: true }).eq('is_active', true);
 
   // 해당 차수 제출 연번 수
-  const { data: submittedData } = await supabase
+  const { data: submittedData } = await _supabase
     .from('consent')
     .select('연번')
     .eq('차수', roundNo)
@@ -667,7 +667,7 @@ async function loadDashboardData() {
   const submittedCount = submittedData ? submittedData.length : 0;
 
   // 반대 연번 수
-  const { data: opposedData } = await supabase
+  const { data: opposedData } = await _supabase
     .from('consent').select('연번').eq('차수', roundNo).eq('상태', '반대');
   const opposedCount = opposedData ? opposedData.length : 0;
 
@@ -681,12 +681,12 @@ async function loadDashboardData() {
   const danjiStats = [];
   for (const danji of danjiList) {
     // 해당 단지 부동산들의 연번 추출
-    const { data: propData } = await supabase
+    const { data: propData } = await _supabase
       .from('property').select('부동산코드').eq('단지', danji);
     if (!propData || propData.length === 0) { danjiStats.push({ danji, total: 0, submitted: 0 }); continue; }
     const codes = propData.map(p => p['부동산코드']);
 
-    const { data: ypData } = await supabase
+    const { data: ypData } = await _supabase
       .from('yeonbun_property').select('연번').in('부동산코드', codes);
     if (!ypData || ypData.length === 0) { danjiStats.push({ danji, total: 0, submitted: 0 }); continue; }
 
@@ -694,12 +694,12 @@ async function loadDashboardData() {
     const yeonbunSet = [...new Set(ypData.map(y => y['연번']))];
 
     // 활성 연번만
-    const { data: activeY } = await supabase
+    const { data: activeY } = await _supabase
       .from('yeonbun').select('연번').in('연번', yeonbunSet).eq('is_active', true);
     const activeSet = activeY ? activeY.map(y => y['연번']) : [];
 
     // 제출된 연번
-    const { data: submitY } = await supabase
+    const { data: submitY } = await _supabase
       .from('consent').select('연번').eq('차수', roundNo).eq('상태', '제출').in('연번', activeSet);
     danjiStats.push({ danji, total: activeSet.length, submitted: submitY ? submitY.length : 0 });
   }
@@ -813,18 +813,18 @@ async function searchOwners() {
     let rows = [];
     if (searchType === '연번') {
       // yeonbun_owner → owner 조인
-      const { data } = await supabase
+      const { data } = await _supabase
         .from('yeonbun_owner')
         .select(`연번, 부번, 대표소유주, owner:owner_id(id, 이름, 전화번호, 거주구분), property:부동산코드(부동산코드, 단지, 동, 호)`)
         .eq('연번', parseInt(q));
       rows = data || [];
     } else if (searchType === '이름') {
-      const { data } = await supabase
+      const { data } = await _supabase
         .from('owner').select('id, 이름, 전화번호, 거주구분').ilike('이름', `%${q}%`).limit(100);
       // 각 소유주의 연번 조회
       if (data) {
         for (const o of data) {
-          const { data: yo } = await supabase
+          const { data: yo } = await _supabase
             .from('yeonbun_owner')
             .select('연번, 부번, 대표소유주, property:부동산코드(부동산코드, 단지, 동, 호)')
             .eq('owner_id', o.id).limit(10);
@@ -832,17 +832,17 @@ async function searchOwners() {
         }
       }
     } else if (searchType === '부동산ID') {
-      const { data } = await supabase
+      const { data } = await _supabase
         .from('yeonbun_owner')
         .select(`연번, 부번, 대표소유주, owner:owner_id(id, 이름, 전화번호, 거주구분), property:부동산코드(부동산코드, 단지, 동, 호)`)
         .ilike('부동산코드', `%${q}%`).limit(100);
       rows = data || [];
     } else if (searchType === '전화번호') {
-      const { data } = await supabase
+      const { data } = await _supabase
         .from('owner').select('id, 이름, 전화번호, 거주구분').ilike('전화번호', `%${q}%`).limit(100);
       if (data) {
         for (const o of data) {
-          const { data: yo } = await supabase
+          const { data: yo } = await _supabase
             .from('yeonbun_owner')
             .select('연번, 부번, 대표소유주, property:부동산코드(부동산코드, 단지, 동, 호)')
             .eq('owner_id', o.id).limit(10);
@@ -932,7 +932,7 @@ async function loadModalTab(idx) {
 
 async function loadOwnerBasicTab(ownerId, yeonbun, body) {
   const { data: o } = await _supabase.from('owner').select('*').eq('id', ownerId).single();
-  const { data: yoList } = await supabase
+  const { data: yoList } = await _supabase
     .from('yeonbun_owner')
     .select('연번, 부번, 대표소유주, 소유형태, 지분별토지, property:부동산코드(부동산코드, 단지, 동, 호, 부동산유형, 전유면적)')
     .eq('owner_id', ownerId);
@@ -1014,7 +1014,7 @@ async function loadOwnerConsentTab(yeonbun, body) {
 }
 
 async function loadOwnerPaymentTab(yeonbun, body) {
-  const { data: payments } = await supabase
+  const { data: payments } = await _supabase
     .from('payment')
     .select('*, payment_round:회차(이름, 납부기한, 금액기준), owner:owner_id(이름)')
     .eq('연번', yeonbun)
@@ -1052,7 +1052,7 @@ async function loadOwnerPaymentTab(yeonbun, body) {
 }
 
 async function loadOwnerActivityTab(yeonbun, ownerId, body) {
-  const { data: logs } = await supabase
+  const { data: logs } = await _supabase
     .from('activity_log')
     .select('*')
     .eq('연번', yeonbun)
@@ -1159,7 +1159,7 @@ async function loadConsentList() {
     const yeonbunNums = [...new Set(displayResults.map(c => c['연번']))];
     const nameMap = {};
     if (yeonbunNums.length > 0) {
-      const { data: repOwners } = await supabase
+      const { data: repOwners } = await _supabase
         .from('yeonbun_owner')
         .select('연번, owner:owner_id(이름)')
         .in('연번', yeonbunNums)
@@ -1230,7 +1230,7 @@ async function saveConsentEdit() {
   const status = document.getElementById('consent-edit-status').value;
   const method = status === '제출' ? document.getElementById('consent-edit-method').value : null;
 
-  const { data: existing } = await supabase
+  const { data: existing } = await _supabase
     .from('consent').select('id').eq('연번', yeonbun).eq('차수', roundNo).single();
 
   const { data: authData } = await _supabase.auth.getUser();
@@ -1273,7 +1273,7 @@ async function saveConsentEdit() {
 async function renderOps() {
   const content = document.getElementById('content');
   const { data: users } = await _supabase.from('app_user').select('*').order('role');
-  const { data: logs } = await supabase
+  const { data: logs } = await _supabase
     .from('app_user_log')
     .select('*, app_user:app_user_id(name, role)')
     .order('created_at', { ascending: false })
