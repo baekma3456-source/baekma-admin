@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>백마마을 재건축 — 관리자앱</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
+<script>
+// Supabase 라이브러리 로딩
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -504,7 +507,18 @@
 const SUPABASE_URL = 'https://ldqoglrfvlugryhcmmve.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkcW9nbHJmdmx1Z3J5aGNtbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODQzNjUsImV4cCI6MjA5MjI2MDM2NX0.1Sap5txxv3P-pnpLGP-3tproAzmN9o7d8EbL3803nc4'; // ← anon key 입력
 
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Supabase 클라이언트 초기화 (여러 방식 순서대로 시도)
+let _supabase;
+if (typeof supabase !== 'undefined' && supabase.createClient) {
+  _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else if (window.supabase && window.supabase.createClient) {
+  _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else if (window.Supabase && window.Supabase.createClient) {
+  _supabase = window.Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  document.body.innerHTML = '<div style="color:red;padding:40px;font-size:18px">Supabase 라이브러리 로딩 실패. 인터넷 연결을 확인하세요.</div>';
+}
+console.log('Supabase 초기화:', _supabase ? '성공' : '실패');
 
 // ════════════════════════════════════════════════
 // 상태
