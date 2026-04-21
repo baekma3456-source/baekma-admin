@@ -678,9 +678,6 @@ async function loadDashboardData() {
     .eq('차수', roundNo)
     .eq('상태', '반대');
 
-  const rate = totalYeonbun ? ((submittedCount||0) / totalYeonbun * 100).toFixed(2) : 0;
-  const notSubmitted = totalYeonbun - (submittedCount||0) - (opposedCount||0);
-
   // 단지별 집계 — 전체 활성 연번 목록을 한 번에 로드 후 JS에서 집계
   // 1) 전체 활성 연번 목록 (연번 번호만, 페이지네이션)
   let allActiveYeonbun = [];
