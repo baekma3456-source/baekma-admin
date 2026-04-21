@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>백마마을 재건축 — 관리자앱</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #161920;
+    --bg3: #1e2230;
+    --bg4: #252a3a;
+    --border: #2a3044;
+    --border2: #364060;
+    --accent: #4f7fff;
+    --accent2: #3a6aff;
+    --accent-soft: rgba(79,127,255,0.12);
+    --green: #34c97a;
+    --green-soft: rgba(52,201,122,0.12);
+    --red: #ff5b5b;
+    --red-soft: rgba(255,91,91,0.12);
+    --yellow: #f5c842;
+    --yellow-soft: rgba(245,200,66,0.12);
+    --text: #e8eaf0;
+    --text2: #9aa0b8;
+    --text3: #5a6280;
+    --sidebar-w: 220px;
+    --radius: 10px;
+    --font: 'Noto Sans KR', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.6; }
+
+  /* ── 로그인 ── */
+  #login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,127,255,0.18) 0%, transparent 70%), var(--bg);
+  }
+  .login-box {
+    width: 380px; padding: 48px 40px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  }
+  .login-logo { text-align: center; margin-bottom: 32px; }
+  .login-logo .logo-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 14px;
+    background: var(--accent); font-size: 22px; margin-bottom: 14px;
+  }
+  .login-logo h1 { font-size: 17px; font-weight: 600; color: var(--text); }
+  .login-logo p { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; letter-spacing: 0.04em; }
+  .form-group input {
+    width: 100%; padding: 11px 14px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--font); font-size: 14px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+  .btn-primary {
+    width: 100%; padding: 12px; margin-top: 8px;
+    background: var(--accent); border: none; border-radius: 8px;
+    color: #fff; font-family: var(--font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s, transform 0.1s;
+  }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-primary:active { transform: scale(0.98); }
+  .login-err { color: var(--red); font-size: 12px; text-align: center; margin-top: 12px; min-height: 18px; }
+
+  /* ── 앱 레이아웃 ── */
+  #app { display: none; height: 100vh; }
+  #app.visible { display: flex; }
+
+  /* 사이드바 */
+  .sidebar {
+    width: var(--sidebar-w); flex-shrink: 0;
+    background: var(--bg2); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 0;
+  }
+  .sidebar-header {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header .site-name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .sidebar-header .site-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .sidebar-user {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .user-avatar {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--accent); font-weight: 700; flex-shrink: 0;
+  }
+  .user-info .user-name { font-size: 13px; font-weight: 600; }
+  .user-info .user-role { font-size: 11px; color: var(--accent); }
+  .sidebar-nav { flex: 1; padding: 12px 10px; overflow-y: auto; }
+  .nav-section-label {
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    letter-spacing: 0.08em; padding: 8px 8px 4px; text-transform: uppercase;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    color: var(--text2); font-size: 13px; font-weight: 500;
+    transition: background 0.15s, color 0.15s; margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+  .sidebar-footer {
+    padding: 12px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-logout {
+    width: 100%; padding: 9px 10px;
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text3); font-family: var(--font); font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+
+  /* 메인 */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar {
+    height: 56px; flex-shrink: 0;
+    padding: 0 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg2);
+  }
+  .topbar-title { font-size: 16px; font-weight: 700; }
+  .topbar-meta { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+  .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+  /* ── 공통 컴포넌트 ── */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; }
+  .section-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .badge-green { background: var(--green-soft); color: var(--green); }
+  .badge-red { background: var(--red-soft); color: var(--red); }
+  .badge-yellow { background: var(--yellow-soft); color: var(--yellow); }
+  .badge-blue { background: var(--accent-soft); color: var(--accent); }
+  .badge-gray { background: rgba(90,98,128,0.2); color: var(--text3); }
+
+  /* 버튼 */
+  .btn {
+    padding: 8px 16px; border-radius: 8px; border: none;
+    font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-blue { background: var(--accent); color: #fff; }
+  .btn-blue:hover { background: var(--accent2); }
+  .btn-ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+  .btn-danger { background: var(--red-soft); color: var(--red); border: 1px solid transparent; }
+  .btn-danger:hover { border-color: var(--red); }
+
+  /* 인풋 */
+  .input {
+    padding: 9px 12px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--font); font-size: 13px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .input:focus { border-color: var(--accent); }
+  select.input { cursor: pointer; }
+
+  /* 테이블 */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 9px 12px; text-align: left;
+    font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border); background: var(--bg3);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.12s; }
+  tbody tr:hover { background: var(--bg3); }
+  tbody td { padding: 10px 12px; font-size: 13px; color: var(--text); }
+  tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+
+  /* 로딩 스피너 */
+  .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 2px solid var(--border2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-center { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: var(--text3); }
+
+  /* 모달 */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+    width: 680px; max-width: 95vw; max-height: 88vh;
+    display: flex; flex-direction: column;
+    transform: translateY(12px) scale(0.98); transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-sub { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .modal-close {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--bg3); border: none; cursor: pointer;
+    color: var(--text2); font-size: 16px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: background 0.15s;
+  }
+  .modal-close:hover { background: var(--bg4); color: var(--text); }
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+  .modal-tabs {
+    display: flex; gap: 4px; padding: 16px 24px 0;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-tab {
+    padding: 8px 16px; border-radius: 8px 8px 0 0;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    color: var(--text3); border: 1px solid transparent;
+    border-bottom: none; transition: all 0.15s; background: none;
+    font-family: var(--font);
+  }
+  .modal-tab.active { background: var(--bg2); color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg2); }
+
+  /* ── 대시보드 ── */
+  .dash-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .dash-controls label { font-size: 13px; color: var(--text2); }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  .stat-card .stat-label { font-size: 11px; color: var(--text3); font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; font-family: var(--mono); line-height: 1; }
+  .stat-card .stat-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
+  .stat-card.highlight { border-color: var(--accent); background: linear-gradient(135deg, var(--accent-soft), var(--bg2)); }
+  .stat-card.highlight .stat-value { color: var(--accent); }
+
+  .progress-bar-wrap { margin-bottom: 24px; }
+  .progress-bar-bg {
+    height: 10px; background: var(--bg3); border-radius: 10px; overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--green));
+    border-radius: 10px; transition: width 0.6s cubic-bezier(.4,0,.2,1);
+  }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+  .danji-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .danji-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .danji-card .danji-name { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .danji-rate { font-size: 22px; font-weight: 700; font-family: var(--mono); }
+  .danji-rate span { font-size: 13px; font-weight: 400; color: var(--text3); }
+  .danji-detail { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .danji-bar { height: 4px; background: var(--bg3); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+  .danji-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.5s; }
+
+  /* ── 소유주 조회 ── */
+  .search-bar {
+    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .search-type-btns { display: flex; gap: 6px; }
+  .search-type-btn {
+    padding: 7px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text2); font-family: var(--font); transition: all 0.15s;
+  }
+  .search-type-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .search-input-wrap { display: flex; gap: 8px; flex: 1; min-width: 260px; }
+  .search-input-wrap .input { flex: 1; }
+  .result-count { font-size: 12px; color: var(--text3); margin-bottom: 10px; }
+
+  /* 소유주 상세 모달 */
+  .detail-kv { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; }
+  .detail-kv .kv-key { font-size: 12px; color: var(--text3); font-weight: 500; padding-top: 1px; }
+  .detail-kv .kv-val { font-size: 13px; color: var(--text); }
+  .prop-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .prop-tag {
+    padding: 3px 10px; border-radius: 6px;
+    background: var(--bg3); border: 1px solid var(--border);
+    font-size: 12px; font-family: var(--mono); color: var(--text2);
+  }
+  .consent-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .consent-cell {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 10px; text-align: center;
+  }
+  .consent-cell .round-name { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+  .consent-cell .round-status { font-size: 13px; font-weight: 600; }
+  .consent-cell.submitted { border-color: var(--green); background: var(--green-soft); }
+  .consent-cell.submitted .round-status { color: var(--green); }
+  .consent-cell.opposed { border-color: var(--red); background: var(--red-soft); }
+  .consent-cell.opposed .round-status { color: var(--red); }
+  .edit-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+  /* ── 동의 관리 ── */
+  .consent-search-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+
+  /* ── 운영 관리 ── */
+  .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* 알림 토스트 */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px; z-index: 999;
+    padding: 12px 20px; border-radius: 10px;
+    font-size: 13px; font-weight: 500;
+    transform: translateY(20px); opacity: 0;
+    transition: all 0.25s; pointer-events: none;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: var(--green); color: #fff; }
+  #toast.error { background: var(--red); color: #fff; }
+  #toast.info { background: var(--accent); color: #fff; }
+
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* 빈 상태 */
+  .empty-state { padding: 48px; text-align: center; color: var(--text3); }
+  .empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-state p { font-size: 13px; }
+
+  /* 구분선 */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* 인라인 수정 폼 */
+  .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .inline-form .input { flex: 1; min-width: 120px; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ 로그인 ════════════════════ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="logo-mark">🏘️</div>
+      <h1>백마마을 재건축</h1>
+      <p>관리자 전용 시스템</p>
+    </div>
+    <div class="form-group">
+      <label>이메일</label>
+      <input type="email" id="login-email" placeholder="이메일 주소 입력" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>비밀번호</label>
+      <input type="password" id="login-pw" placeholder="비밀번호 입력" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">로그인</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ 앱 ════════════════════ -->
+<div id="app">
+  <!-- 사이드바 -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="site-name">백마마을 재건축</div>
+      <div class="site-sub">주민대표단 관리자앱</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="user-avatar">위</div>
+      <div class="user-info">
+        <div class="user-name" id="user-name">위원장</div>
+        <div class="user-role">위원장</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">메뉴</div>
+      <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">📊</span> 종합 대시보드
+      </div>
+      <div class="nav-item" data-page="owners" onclick="navigate('owners')">
+        <span class="nav-icon">👥</span> 소유주 조회
+      </div>
+      <div class="nav-item" data-page="consent" onclick="navigate('consent')">
+        <span class="nav-icon">📋</span> 동의 관리
+      </div>
+      <div class="nav-item" data-page="ops" onclick="navigate('ops')">
+        <span class="nav-icon">⚙️</span> 운영 관리
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn-logout" onclick="doLogout()">🚪 로그아웃</button>
+    </div>
+  </div>
+
+  <!-- 메인 -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">종합 대시보드</div>
+      <div class="topbar-meta" id="topbar-meta"></div>
+    </div>
+    <div class="content" id="content">
+      <!-- 각 페이지가 여기에 렌더링됨 -->
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ 소유주 상세 모달 ════════════════════ -->
+<div class="modal-overlay" id="owner-modal">
+  <div class="modal" style="width:720px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-owner-name">—</div>
+        <div class="modal-sub" id="modal-owner-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('owner-modal')">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchModalTab(0)" id="mtab-0">기본 정보</button>
+      <button class="modal-tab" onclick="switchModalTab(1)" id="mtab-1">동의 현황</button>
+      <button class="modal-tab" onclick="switchModalTab(2)" id="mtab-2">납부 현황</button>
+      <button class="modal-tab" onclick="switchModalTab(3)" id="mtab-3">활동 기록</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ 동의 수정 모달 ════════════════════ -->
+<div class="modal-overlay" id="consent-edit-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">동의 상태 수정</div>
+        <div class="modal-sub" id="consent-edit-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('consent-edit-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;gap:14px;">
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">동의 상태</div>
+          <select class="input" id="consent-edit-status" style="width:100%">
+            <option value="미제출">미제출</option>
+            <option value="제출">제출</option>
+            <option value="반대">반대</option>
+          </select>
+        </div>
+        <div id="consent-method-row">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">접수 방법</div>
+          <select class="input" id="consent-edit-method" style="width:100%">
+            <option value="">— 선택 —</option>
+            <option value="전자">전자</option>
+            <option value="사무실">사무실</option>
+            <option value="우편">우편</option>
+            <option value="관리사무소">관리사무소</option>
+            <option value="기타">기타</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+          <button class="btn btn-ghost" onclick="closeModal('consent-edit-modal')">취소</button>
+          <button class="btn btn-blue" onclick="saveConsentEdit()">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 토스트 -->
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════
+// 설정 — 여기에 Supabase 정보 입력
+// ════════════════════════════════════════════════
+const SUPABASE_URL = 'https://ywzjvpajcoopjxhwubqd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkcW9nbHJmdmx1Z3J5aGNtbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODQzNjUsImV4cCI6MjA5MjI2MDM2NX0.1Sap5txxv3P-pnpLGP-3tproAzmN9o7d8EbL3803nc4'; // ← anon key 입력
+
+const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ════════════════════════════════════════════════
+// 상태
+// ════════════════════════════════════════════════
+let currentPage = 'dashboard';
+let currentModalTab = 0;
+let currentOwnerData = null;
+let consentEditData = null; // { 연번, 차수, 차수명 }
+let searchType = '연번';
+let consentRounds = []; // 차수 목록 캐시
+
+// ════════════════════════════════════════════════
+// 인증
+// ════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pw = document.getElementById('login-pw').value;
+  const errEl = document.getElementById('login-err');
+  const btn = document.getElementById('login-btn');
+  errEl.textContent = '';
+  btn.textContent = '로그인 중...';
+  btn.disabled = true;
+
+  try {
+    const { data, error } = await _supabase.auth.signInWithPassword({ email, password: pw });
+    if (error) throw error;
+
+    // role 확인
+    const { data: userRow, error: ue } = await supabase
+      .from('app_user').select('*').eq('username', data.user.email).single();
+    if (ue || !userRow) throw new Error('등록된 계정 정보가 없습니다.');
+    if (userRow.role !== '위원장') throw new Error('위원장 계정만 접속할 수 있습니다.');
+    if (!userRow.is_active) throw new Error('비활성화된 계정입니다.');
+
+    document.getElementById('user-name').textContent = userRow.name;
+    document.getElementById('user-avatar').textContent = userRow.name.charAt(0);
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').classList.add('visible');
+    updateTopbarMeta();
+    await navigate('dashboard');
+  } catch(e) {
+    errEl.textContent = e.message || '로그인에 실패했습니다.';
+  } finally {
+    btn.textContent = '로그인';
+    btn.disabled = false;
+  }
+}
+
+async function doLogout() {
+  await _supabase.auth.signOut();
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-pw').value = '';
+}
+
+document.getElementById('login-pw').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// 세션 복원
+_supabase.auth.getSession().then(async ({ data: { session } }) => {
+  if (!session) return;
+  const { data: userRow } = await supabase
+    .from('app_user').select('*').eq('username', session.user.email).single();
+  if (!userRow || userRow.role !== '위원장' || !userRow.is_active) return;
+  document.getElementById('user-name').textContent = userRow.name;
+  document.getElementById('user-avatar').textContent = userRow.name.charAt(0);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  updateTopbarMeta();
+  await navigate('dashboard');
+});
+
+// ════════════════════════════════════════════════
+// 네비게이션
+// ════════════════════════════════════════════════
+const pageTitles = {
+  dashboard: '종합 대시보드',
+  owners: '소유주 조회',
+  consent: '동의 관리',
+  ops: '운영 관리'
+};
+
+async function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  document.getElementById('topbar-title').textContent = pageTitles[page];
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>';
+  if (page === 'dashboard') await renderDashboard();
+  else if (page === 'owners') renderOwners();
+  else if (page === 'consent') await renderConsent();
+  else if (page === 'ops') await renderOps();
+}
+
+function updateTopbarMeta() {
+  const now = new Date();
+  document.getElementById('topbar-meta').textContent =
+    now.toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' })
+    + ' ' + now.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ════════════════════════════════════════════════
+// 대시보드
+// ════════════════════════════════════════════════
+async function renderDashboard() {
+  const content = document.getElementById('content');
+
+  // 차수 목록 로드
+  const { data: rounds } = await _supabase.from('consent_round').select('*').order('차수');
+  consentRounds = rounds || [];
+
+  // 기본 선택: 가장 최근 차수
+  const defaultRound = consentRounds.length ? consentRounds[consentRounds.length - 1]['차수'] : 1;
+
+  content.innerHTML = `
+    <div class="dash-controls">
+      <label>동의 차수 선택</label>
+      <select class="input" id="round-select" onchange="loadDashboardData()" style="min-width:160px">
+        ${consentRounds.map(r => `<option value="${r['차수']}" ${r['차수']==defaultRound?'selected':''}>${r['차수']}차 — ${r['이름']}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadDashboardData()">🔄 새로고침</button>
+    </div>
+    <div id="dash-body">
+      <div class="loading-center"><div class="spinner"></div> 집계 중...</div>
+    </div>
+  `;
+  await loadDashboardData();
+}
+
+async function loadDashboardData() {
+  const roundNo = parseInt(document.getElementById('round-select').value);
+  const roundInfo = consentRounds.find(r => r['차수'] === roundNo);
+  const dashBody = document.getElementById('dash-body');
+  dashBody.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
+
+  // 전체 활성 연번
+  const { count: totalYeonbun } = await supabase
+    .from('yeonbun').select('*', { count: 'exact', head: true }).eq('is_active', true);
+
+  // 해당 차수 제출 연번 수
+  const { data: submittedData } = await supabase
+    .from('consent')
+    .select('연번')
+    .eq('차수', roundNo)
+    .eq('상태', '제출');
+  const submittedCount = submittedData ? submittedData.length : 0;
+
+  // 반대 연번 수
+  const { data: opposedData } = await supabase
+    .from('consent').select('연번').eq('차수', roundNo).eq('상태', '반대');
+  const opposedCount = opposedData ? opposedData.length : 0;
+
+  const rate = totalYeonbun ? (submittedCount / totalYeonbun * 100).toFixed(2) : 0;
+  const notSubmitted = totalYeonbun - submittedCount - opposedCount;
+
+  // 단지별 집계
+  // yeonbun → yeonbun_property → property.단지 조인 필요
+  // 단지 목록
+  const danjiList = ['3단지', '4단지', '5단지', '6단지', '상가'];
+  const danjiStats = [];
+  for (const danji of danjiList) {
+    // 해당 단지 부동산들의 연번 추출
+    const { data: propData } = await supabase
+      .from('property').select('부동산코드').eq('단지', danji);
+    if (!propData || propData.length === 0) { danjiStats.push({ danji, total: 0, submitted: 0 }); continue; }
+    const codes = propData.map(p => p['부동산코드']);
+
+    const { data: ypData } = await supabase
+      .from('yeonbun_property').select('연번').in('부동산코드', codes);
+    if (!ypData || ypData.length === 0) { danjiStats.push({ danji, total: 0, submitted: 0 }); continue; }
+
+    // 연번 중복 제거
+    const yeonbunSet = [...new Set(ypData.map(y => y['연번']))];
+
+    // 활성 연번만
+    const { data: activeY } = await supabase
+      .from('yeonbun').select('연번').in('연번', yeonbunSet).eq('is_active', true);
+    const activeSet = activeY ? activeY.map(y => y['연번']) : [];
+
+    // 제출된 연번
+    const { data: submitY } = await supabase
+      .from('consent').select('연번').eq('차수', roundNo).eq('상태', '제출').in('연번', activeSet);
+    danjiStats.push({ danji, total: activeSet.length, submitted: submitY ? submitY.length : 0 });
+  }
+
+  dashBody.innerHTML = `
+    <!-- 요약 카드 -->
+    <div class="stat-grid">
+      <div class="stat-card highlight">
+        <div class="stat-label">전체 동의율</div>
+        <div class="stat-value">${rate}<small style="font-size:16px">%</small></div>
+        <div class="stat-sub">${roundInfo ? roundInfo['이름'] : roundNo+'차'} 기준</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">제출 완료</div>
+        <div class="stat-value" style="color:var(--green)">${submittedCount.toLocaleString()}</div>
+        <div class="stat-sub">연번 기준</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">미제출</div>
+        <div class="stat-value" style="color:var(--yellow)">${notSubmitted.toLocaleString()}</div>
+        <div class="stat-sub">연번 기준</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">반대</div>
+        <div class="stat-value" style="color:var(--red)">${opposedCount.toLocaleString()}</div>
+        <div class="stat-sub">전체 ${totalYeonbun?.toLocaleString()} 연번</div>
+      </div>
+    </div>
+
+    <!-- 전체 진행률 바 -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">전체 동의 진행률</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">
+        ${roundInfo ? roundInfo['차수']+'차 — '+roundInfo['이름'] : ''} &nbsp;|&nbsp;
+        ${roundInfo?.시작일 ? '기간: '+roundInfo['시작일']+' ~ '+(roundInfo['종료일']||'진행중') : '기간 미설정'}
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width:${rate}%"></div>
+      </div>
+      <div class="progress-label">
+        <span>${submittedCount.toLocaleString()} / ${totalYeonbun?.toLocaleString()} 연번</span>
+        <span style="color:var(--accent);font-weight:700">${rate}%</span>
+      </div>
+    </div>
+
+    <!-- 단지별 -->
+    <div class="section-title">단지별 동의 현황</div>
+    <div class="danji-grid">
+      ${danjiStats.map(d => {
+        const r = d.total ? (d.submitted / d.total * 100).toFixed(1) : 0;
+        return `
+        <div class="danji-card">
+          <div class="danji-name">${d.danji}</div>
+          <div class="danji-rate">${r}<span>%</span></div>
+          <div class="danji-detail">${d.submitted.toLocaleString()} / ${d.total.toLocaleString()} 연번</div>
+          <div class="danji-bar"><div class="danji-bar-fill" style="width:${r}%"></div></div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════
+// 소유주 조회
+// ════════════════════════════════════════════════
+function renderOwners() {
+  document.getElementById('content').innerHTML = `
+    <div class="search-bar">
+      <div class="search-type-btns">
+        ${['연번','이름','부동산ID','전화번호'].map(t =>
+          `<button class="search-type-btn ${t==='연번'?'active':''}"
+            onclick="setSearchType('${t}',this)">${t}</button>`
+        ).join('')}
+      </div>
+      <div class="search-input-wrap">
+        <input class="input" id="owner-search-input" placeholder="검색어 입력 후 Enter 또는 검색 클릭"
+          onkeydown="if(event.key==='Enter') searchOwners()">
+        <button class="btn btn-blue" onclick="searchOwners()">🔍 검색</button>
+      </div>
+    </div>
+    <div class="result-count" id="result-count"></div>
+    <div id="owner-list">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>검색어를 입력하고 검색 버튼을 누르세요.</p>
+      </div>
+    </div>
+  `;
+  searchType = '연번';
+}
+
+function setSearchType(type, el) {
+  searchType = type;
+  document.querySelectorAll('.search-type-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('owner-search-input').placeholder =
+    type === '연번' ? '연번 숫자 입력' :
+    type === '이름' ? '소유주 이름 입력' :
+    type === '부동산ID' ? '예: 301-1202, 4SS-0107' : '전화번호 입력';
+  document.getElementById('owner-search-input').focus();
+}
+
+async function searchOwners() {
+  const q = document.getElementById('owner-search-input').value.trim();
+  if (!q) return;
+  const listEl = document.getElementById('owner-list');
+  const countEl = document.getElementById('result-count');
+  listEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 검색 중...</div>';
+
+  try {
+    let rows = [];
+    if (searchType === '연번') {
+      // yeonbun_owner → owner 조인
+      const { data } = await supabase
+        .from('yeonbun_owner')
+        .select(`연번, 부번, 대표소유주, owner:owner_id(id, 이름, 전화번호, 거주구분), property:부동산코드(부동산코드, 단지, 동, 호)`)
+        .eq('연번', parseInt(q));
+      rows = data || [];
+    } else if (searchType === '이름') {
+      const { data } = await supabase
+        .from('owner').select('id, 이름, 전화번호, 거주구분').ilike('이름', `%${q}%`).limit(100);
+      // 각 소유주의 연번 조회
+      if (data) {
+        for (const o of data) {
+          const { data: yo } = await supabase
+            .from('yeonbun_owner')
+            .select('연번, 부번, 대표소유주, property:부동산코드(부동산코드, 단지, 동, 호)')
+            .eq('owner_id', o.id).limit(10);
+          if (yo) yo.forEach(y => rows.push({ ...y, owner: o }));
+        }
+      }
+    } else if (searchType === '부동산ID') {
+      const { data } = await supabase
+        .from('yeonbun_owner')
+        .select(`연번, 부번, 대표소유주, owner:owner_id(id, 이름, 전화번호, 거주구분), property:부동산코드(부동산코드, 단지, 동, 호)`)
+        .ilike('부동산코드', `%${q}%`).limit(100);
+      rows = data || [];
+    } else if (searchType === '전화번호') {
+      const { data } = await supabase
+        .from('owner').select('id, 이름, 전화번호, 거주구분').ilike('전화번호', `%${q}%`).limit(100);
+      if (data) {
+        for (const o of data) {
+          const { data: yo } = await supabase
+            .from('yeonbun_owner')
+            .select('연번, 부번, 대표소유주, property:부동산코드(부동산코드, 단지, 동, 호)')
+            .eq('owner_id', o.id).limit(10);
+          if (yo) yo.forEach(y => rows.push({ ...y, owner: o }));
+        }
+      }
+    }
+
+    // 연번+소유주 기준으로 중복 제거하여 표시
+    const seen = new Set();
+    const unique = [];
+    for (const r of rows) {
+      const key = `${r['연번']}-${r.owner?.id}`;
+      if (!seen.has(key)) { seen.add(key); unique.push(r); }
+    }
+
+    countEl.textContent = `검색 결과: ${unique.length}건`;
+    if (unique.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>검색 결과가 없습니다.</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>연번</th><th>이름</th><th>부동산ID</th><th>단지</th><th>전화번호</th><th>거주구분</th><th>대표소유주</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${unique.map(r => `
+              <tr onclick="openOwnerModal('${r.owner?.id}', ${r['연번']})">
+                <td class="mono">${r['연번']}</td>
+                <td><strong>${r.owner?.이름||'—'}</strong></td>
+                <td class="mono">${r.property?.부동산코드||'—'}</td>
+                <td>${r.property?.단지||'—'}</td>
+                <td class="mono">${r.owner?.전화번호||'—'}</td>
+                <td>${r.owner?.거주구분||'—'}</td>
+                <td>${r['대표소유주'] ? '<span class="badge badge-blue">대표</span>' : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
+  }
+}
+
+// ════════════════════════════════════════════════
+// 소유주 상세 모달
+// ════════════════════════════════════════════════
+async function openOwnerModal(ownerId, yeonbun) {
+  currentOwnerData = { ownerId, yeonbun };
+  currentModalTab = 0;
+  updateModalTabs();
+  document.getElementById('owner-modal').classList.add('open');
+  document.getElementById('modal-owner-name').textContent = '불러오는 중...';
+  document.getElementById('modal-owner-sub').textContent = '';
+  await loadModalTab(0);
+}
+
+function updateModalTabs() {
+  ['mtab-0','mtab-1','mtab-2','mtab-3'].forEach((id, i) => {
+    document.getElementById(id).classList.toggle('active', i === currentModalTab);
+  });
+}
+
+async function switchModalTab(idx) {
+  currentModalTab = idx;
+  updateModalTabs();
+  await loadModalTab(idx);
+}
+
+async function loadModalTab(idx) {
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '<div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>';
+  const { ownerId, yeonbun } = currentOwnerData;
+
+  if (idx === 0) await loadOwnerBasicTab(ownerId, yeonbun, body);
+  else if (idx === 1) await loadOwnerConsentTab(yeonbun, body);
+  else if (idx === 2) await loadOwnerPaymentTab(yeonbun, body);
+  else if (idx === 3) await loadOwnerActivityTab(yeonbun, ownerId, body);
+}
+
+async function loadOwnerBasicTab(ownerId, yeonbun, body) {
+  const { data: o } = await _supabase.from('owner').select('*').eq('id', ownerId).single();
+  const { data: yoList } = await supabase
+    .from('yeonbun_owner')
+    .select('연번, 부번, 대표소유주, 소유형태, 지분별토지, property:부동산코드(부동산코드, 단지, 동, 호, 부동산유형, 전유면적)')
+    .eq('owner_id', ownerId);
+  const { data: yb } = await _supabase.from('yeonbun').select('*').eq('연번', yeonbun).single();
+
+  document.getElementById('modal-owner-name').textContent = o?.이름 || '—';
+  document.getElementById('modal-owner-sub').textContent = `연번 ${yeonbun} · ${yb?.시행방식||''}`;
+
+  const props = (yoList||[]).map(y => y.property).filter(Boolean);
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div class="card-title">소유주 정보</div>
+        <div class="detail-kv">
+          <span class="kv-key">이름</span><span class="kv-val">${o?.이름||'—'}</span>
+          <span class="kv-key">생년월일</span><span class="kv-val">${o?.생년월일_사업자번호||'—'}</span>
+          <span class="kv-key">성별</span><span class="kv-val">${o?.성별||'—'}</span>
+          <span class="kv-key">전화번호</span><span class="kv-val mono">${o?.전화번호||'—'}</span>
+          <span class="kv-key">거주구분</span><span class="kv-val">${o?.거주구분||'—'}</span>
+          <span class="kv-key">등기상 주소</span><span class="kv-val" style="font-size:12px">${o?.등기상주소||'—'}</span>
+          <span class="kv-key">실거주지</span><span class="kv-val" style="font-size:12px">${o?.실거주지||'—'}</span>
+          <span class="kv-key">얼마집 인증</span><span class="kv-val">${o?.얼마집_인증||'—'} ${o?.얼마집_인증일||''}</span>
+          <span class="kv-key">메모</span><span class="kv-val" style="font-size:12px;color:var(--text3)">${o?.메모||'—'}</span>
+        </div>
+      </div>
+      <div>
+        <div class="card-title">연번 / 부동산</div>
+        <div class="detail-kv" style="margin-bottom:12px">
+          <span class="kv-key">연번</span><span class="kv-val mono">${yeonbun}</span>
+          <span class="kv-key">시행방식</span><span class="kv-val">${yb?.시행방식||'—'}</span>
+          <span class="kv-key">소유지번</span><span class="kv-val" style="font-size:12px">${yb?.소유지번||'—'}</span>
+        </div>
+        <div class="card-title">보유 부동산</div>
+        <div class="prop-tags">
+          ${props.map(p => `<span class="prop-tag">${p.부동산코드}</span>`).join('') || '—'}
+        </div>
+        ${(yoList||[]).map(y => y.property ? `
+          <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:8px;font-size:12px">
+            <span style="font-family:var(--mono);color:var(--accent)">${y.property.부동산코드}</span>
+            <span style="color:var(--text3);margin-left:8px">${y.property.단지} · ${y.property.부동산유형||''}</span>
+            <br>
+            <span style="color:var(--text3)">전유면적 ${y.property.전유면적||'—'}㎡ · 소유형태 ${y['소유형태']||'—'}</span>
+            ${y['대표소유주'] ? ' · <span class="badge badge-blue" style="font-size:10px">대표소유주</span>' : ''}
+          </div>
+        ` : '').join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function loadOwnerConsentTab(yeonbun, body) {
+  const { data: rounds } = await _supabase.from('consent_round').select('*').order('차수');
+  const { data: consents } = await _supabase.from('consent').select('*').eq('연번', yeonbun);
+  const consentMap = {};
+  (consents||[]).forEach(c => { consentMap[c['차수']] = c; });
+
+  body.innerHTML = `
+    <div class="card-title" style="margin-bottom:12px">차수별 동의 현황 — 연번 ${yeonbun}</div>
+    <div class="consent-grid">
+      ${(rounds||[]).map(r => {
+        const c = consentMap[r['차수']];
+        const status = c?.['상태'] || '미제출';
+        const cls = status === '제출' ? 'submitted' : status === '반대' ? 'opposed' : '';
+        const icon = status === '제출' ? '✅' : status === '반대' ? '❌' : '⬜';
+        return `
+          <div class="consent-cell ${cls}">
+            <div class="round-name">${r['차수']}차 ${r['이름']}</div>
+            <div class="round-status">${icon} ${status}</div>
+            ${c?.['접수방법'] ? `<div style="font-size:10px;color:var(--text3);margin-top:4px">${c['접수방법']}</div>` : ''}
+            ${c?.['제출일시'] ? `<div style="font-size:10px;color:var(--text3)">${new Date(c['제출일시']).toLocaleDateString('ko-KR')}</div>` : ''}
+            <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%"
+              onclick="openConsentEdit(${yeonbun}, ${r['차수']}, '${r['이름']}', '${status}', '${c?.['접수방법']||''}')">수정</button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+async function loadOwnerPaymentTab(yeonbun, body) {
+  const { data: payments } = await supabase
+    .from('payment')
+    .select('*, payment_round:회차(이름, 납부기한, 금액기준), owner:owner_id(이름)')
+    .eq('연번', yeonbun)
+    .order('납부일자', { ascending: false });
+
+  if (!payments || payments.length === 0) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div><p>납부 기록이 없습니다.</p></div>';
+    return;
+  }
+
+  const total = payments.reduce((s, p) => s + (p['금액']||0), 0);
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="card-title">납부 기록 — 연번 ${yeonbun}</div>
+      <div style="font-size:13px;color:var(--accent)">총 납부: <strong>${total.toLocaleString()}원</strong></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>회차</th><th>납부자</th><th>금액</th><th>납부일자</th><th>입금계좌</th><th>메모</th></tr></thead>
+        <tbody>
+          ${payments.map(p => `
+            <tr>
+              <td>${p.payment_round?.이름||p['회차']+'회차'}</td>
+              <td>${p.owner?.이름||'—'}</td>
+              <td class="mono" style="color:var(--green)">${(p['금액']||0).toLocaleString()}원</td>
+              <td class="mono">${p['납부일자']||'—'}</td>
+              <td class="mono">${p['입금계좌']||'—'}</td>
+              <td style="color:var(--text3)">${p['메모']||'—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function loadOwnerActivityTab(yeonbun, ownerId, body) {
+  const { data: logs } = await supabase
+    .from('activity_log')
+    .select('*')
+    .eq('연번', yeonbun)
+    .order('활동일시', { ascending: false })
+    .limit(50);
+
+  if (!logs || logs.length === 0) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><p>활동 기록이 없습니다.</p></div>';
+    return;
+  }
+
+  const typeIcon = { '방문':'🚶','전화':'📞','문자':'💬','카톡':'💛','기타':'📌' };
+  const resultBadge = {
+    '제출완료': 'badge-green', '재연락필요': 'badge-yellow',
+    '거부': 'badge-red', '부재': 'badge-gray', '기타': 'badge-gray'
+  };
+
+  body.innerHTML = `
+    <div class="card-title" style="margin-bottom:12px">활동 기록 — 연번 ${yeonbun}</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${logs.map(l => `
+        <div style="padding:12px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span>${typeIcon[l['활동유형']]||'📌'} <strong>${l['활동유형']}</strong></span>
+            <span class="badge ${resultBadge[l['결과']]||'badge-gray'}">${l['결과']}</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--text3)">${l['담당자']||'—'}</span>
+            <span style="font-size:11px;color:var(--text3)">${l['활동일시'] ? new Date(l['활동일시']).toLocaleString('ko-KR') : '—'}</span>
+          </div>
+          ${l['내용'] ? `<div style="font-size:12px;color:var(--text2)">${l['내용']}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════
+// 동의 관리
+// ════════════════════════════════════════════════
+async function renderConsent() {
+  const content = document.getElementById('content');
+  const { data: rounds } = await _supabase.from('consent_round').select('*').order('차수');
+  consentRounds = rounds || [];
+  const defaultRound = consentRounds.length ? consentRounds[consentRounds.length - 1]['차수'] : 1;
+
+  content.innerHTML = `
+    <div class="consent-search-bar">
+      <select class="input" id="consent-round-filter" style="min-width:160px">
+        ${consentRounds.map(r => `<option value="${r['차수']}" ${r['차수']==defaultRound?'selected':''}>${r['차수']}차 — ${r['이름']}</option>`).join('')}
+      </select>
+      <select class="input" id="consent-status-filter" style="min-width:120px">
+        <option value="">전체 상태</option>
+        <option value="미제출">미제출</option>
+        <option value="제출">제출</option>
+        <option value="반대">반대</option>
+      </select>
+      <input class="input" id="consent-search-input" placeholder="연번 또는 이름 검색" style="min-width:200px"
+        onkeydown="if(event.key==='Enter') loadConsentList()">
+      <button class="btn btn-blue" onclick="loadConsentList()">🔍 조회</button>
+    </div>
+    <div class="result-count" id="consent-result-count"></div>
+    <div id="consent-list">
+      <div class="empty-state"><div class="empty-icon">📋</div><p>조건을 선택하고 조회 버튼을 누르세요.</p></div>
+    </div>
+  `;
+}
+
+async function loadConsentList() {
+  const roundNo = parseInt(document.getElementById('consent-round-filter').value);
+  const status = document.getElementById('consent-status-filter').value;
+  const keyword = document.getElementById('consent-search-input').value.trim();
+  const listEl = document.getElementById('consent-list');
+  const countEl = document.getElementById('consent-result-count');
+  listEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 조회 중...</div>';
+
+  try {
+    let query = supabase
+      .from('consent')
+      .select('*, yeonbun:연번(연번, 시행방식, is_active)')
+      .eq('차수', roundNo);
+    if (status) query = query.eq('상태', status);
+
+    const { data: cList } = await query.limit(300);
+    let results = (cList || []).filter(c => c.yeonbun?.is_active);
+
+    // 연번/이름 키워드 필터
+    if (keyword) {
+      const isNum = /^\d+$/.test(keyword);
+      if (isNum) {
+        results = results.filter(c => String(c['연번']) === keyword);
+      } else {
+        // 이름으로 owner 검색 후 연번 목록 가져오기
+        const { data: oList } = await _supabase.from('owner').select('id').ilike('이름', `%${keyword}%`);
+        if (oList && oList.length > 0) {
+          const ownerIds = oList.map(o => o.id);
+          const { data: yoList } = await _supabase.from('yeonbun_owner').select('연번').in('owner_id', ownerIds);
+          const matchYeonbun = new Set((yoList||[]).map(y => y['연번']));
+          results = results.filter(c => matchYeonbun.has(c['연번']));
+        } else { results = []; }
+      }
+    }
+
+    // 각 연번의 대표소유주 이름 가져오기 (표시용, 최대 50건만)
+    const displayResults = results.slice(0, 200);
+    const yeonbunNums = [...new Set(displayResults.map(c => c['연번']))];
+    const nameMap = {};
+    if (yeonbunNums.length > 0) {
+      const { data: repOwners } = await supabase
+        .from('yeonbun_owner')
+        .select('연번, owner:owner_id(이름)')
+        .in('연번', yeonbunNums)
+        .eq('대표소유주', true);
+      (repOwners||[]).forEach(r => { nameMap[r['연번']] = r.owner?.이름 || '—'; });
+    }
+
+    const roundInfo = consentRounds.find(r => r['차수'] === roundNo);
+    countEl.textContent = `검색 결과: ${results.length}건 (최대 200건 표시)`;
+
+    if (displayResults.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>결과가 없습니다.</p></div>';
+      return;
+    }
+
+    const statusBadge = { '제출': 'badge-green', '미제출': 'badge-gray', '반대': 'badge-red' };
+    listEl.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>연번</th><th>대표소유주</th><th>상태</th><th>접수방법</th><th>제출일시</th><th>수정자</th><th>수정</th></tr></thead>
+          <tbody>
+            ${displayResults.map(c => `
+              <tr>
+                <td class="mono">${c['연번']}</td>
+                <td>${nameMap[c['연번']]||'—'}</td>
+                <td><span class="badge ${statusBadge[c['상태']]||'badge-gray'}">${c['상태']}</span></td>
+                <td>${c['접수방법']||'—'}</td>
+                <td class="mono">${c['제출일시'] ? new Date(c['제출일시']).toLocaleString('ko-KR') : '—'}</td>
+                <td>${c['수정자']||'—'}</td>
+                <td>
+                  <button class="btn btn-ghost btn-sm"
+                    onclick="event.stopPropagation();openConsentEdit(${c['연번']}, ${roundNo}, '${roundInfo?.이름||''}', '${c['상태']}', '${c['접수방법']||''}')">수정</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
+  }
+}
+
+// ════════════════════════════════════════════════
+// 동의 수정 모달
+// ════════════════════════════════════════════════
+function openConsentEdit(yeonbun, roundNo, roundName, status, method) {
+  consentEditData = { yeonbun, roundNo, roundName };
+  document.getElementById('consent-edit-sub').textContent = `연번 ${yeonbun} · ${roundNo}차 ${roundName}`;
+  document.getElementById('consent-edit-status').value = status || '미제출';
+  document.getElementById('consent-edit-method').value = method || '';
+  toggleMethodRow(status);
+  document.getElementById('consent-edit-status').onchange = function() {
+    toggleMethodRow(this.value);
+  };
+  document.getElementById('consent-edit-modal').classList.add('open');
+}
+
+function toggleMethodRow(status) {
+  document.getElementById('consent-method-row').style.display =
+    (status === '제출') ? 'block' : 'none';
+}
+
+async function saveConsentEdit() {
+  if (!consentEditData) return;
+  const { yeonbun, roundNo } = consentEditData;
+  const status = document.getElementById('consent-edit-status').value;
+  const method = status === '제출' ? document.getElementById('consent-edit-method').value : null;
+
+  const { data: existing } = await supabase
+    .from('consent').select('id').eq('연번', yeonbun).eq('차수', roundNo).single();
+
+  const { data: authData } = await _supabase.auth.getUser();
+  const modifier = authData?.user?.email || '위원장';
+
+  let err;
+  if (existing) {
+    const { error } = await _supabase.from('consent').update({
+      상태: status,
+      접수방법: method,
+      제출일시: status === '제출' ? new Date().toISOString() : null,
+      수정자: modifier,
+      수정일시: new Date().toISOString()
+    }).eq('id', existing.id);
+    err = error;
+  } else {
+    const { error } = await _supabase.from('consent').insert({
+      연번: yeonbun, 차수: roundNo, 상태: status, 접수방법: method,
+      제출일시: status === '제출' ? new Date().toISOString() : null,
+      수정자: modifier
+    });
+    err = error;
+  }
+
+  if (err) { showToast('저장 실패: ' + err.message, 'error'); return; }
+  showToast('저장되었습니다.', 'success');
+  closeModal('consent-edit-modal');
+
+  // 현재 탭이 소유주 모달 동의탭이면 새로고침
+  if (document.getElementById('owner-modal').classList.contains('open') && currentModalTab === 1) {
+    await loadModalTab(1);
+  }
+  // 동의 관리 페이지라면 목록 새로고침
+  if (currentPage === 'consent') await loadConsentList();
+}
+
+// ════════════════════════════════════════════════
+// 운영 관리
+// ════════════════════════════════════════════════
+async function renderOps() {
+  const content = document.getElementById('content');
+  const { data: users } = await _supabase.from('app_user').select('*').order('role');
+  const { data: logs } = await supabase
+    .from('app_user_log')
+    .select('*, app_user:app_user_id(name, role)')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  content.innerHTML = `
+    <div class="ops-grid">
+      <!-- 운영진 계정 목록 -->
+      <div>
+        <div class="section-title">운영진 계정 현황</div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table>
+            <thead><tr><th>이름</th><th>역할</th><th>아이디(이메일)</th><th>상태</th></tr></thead>
+            <tbody>
+              ${(users||[]).map(u => `
+                <tr>
+                  <td><strong>${u.name}</strong></td>
+                  <td><span class="badge ${u.role==='위원장'?'badge-blue':'badge-gray'}">${u.role}</span></td>
+                  <td class="mono" style="font-size:11px">${u.username}</td>
+                  <td><span class="badge ${u.is_active?'badge-green':'badge-red'}">${u.is_active?'활성':'비활성'}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;padding:14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px">💡 운영진 계정 추가 방법</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.8">
+            1. Supabase 대시보드 → Authentication → Users → Add user<br>
+            2. 이메일·비밀번호 입력 후 <strong>Auto Confirm User</strong> 체크<br>
+            3. 생성된 User UID 복사<br>
+            4. SQL Editor에서 아래 SQL 실행:<br>
+            <code style="display:block;margin-top:6px;padding:8px;background:var(--bg4);border-radius:6px;font-size:11px;color:var(--accent)">
+INSERT INTO app_user (auth_uid, username, name, role)<br>
+VALUES ('복사한-UUID', '이메일', '이름', '운영진');
+            </code>
+          </div>
+        </div>
+      </div>
+
+      <!-- 앱 사용 로그 -->
+      <div>
+        <div class="section-title">앱 사용 로그 <span style="font-size:12px;font-weight:400;color:var(--text3)">(최근 50건)</span></div>
+        <div class="card" style="padding:0;overflow:hidden;max-height:480px;overflow-y:auto">
+          ${!logs || logs.length === 0
+            ? '<div class="empty-state"><div class="empty-icon">📋</div><p>로그 없음</p></div>'
+            : `<table>
+              <thead><tr><th>사용자</th><th>이벤트</th><th>페이지</th><th>시각</th></tr></thead>
+              <tbody>
+                ${logs.map(l => `
+                  <tr>
+                    <td>${l.app_user?.name||'—'} <span style="font-size:11px;color:var(--text3)">${l.app_user?.role||''}</span></td>
+                    <td><span class="badge ${l['이벤트유형']==='로그인'?'badge-green':l['이벤트유형']==='로그아웃'?'badge-gray':'badge-blue'}">${l['이벤트유형']}</span></td>
+                    <td class="mono" style="font-size:11px">${l['페이지']||'—'}</td>
+                    <td class="mono" style="font-size:11px">${l['created_at'] ? new Date(l['created_at']).toLocaleString('ko-KR') : '—'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════
+// 유틸
+// ════════════════════════════════════════════════
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// 모달 외부 클릭 시 닫기
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  setTimeout(() => { t.className = ''; }, 2800);
+}
+</script>
+</body>
+</html>
