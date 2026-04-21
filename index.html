@@ -507,17 +507,14 @@
 const SUPABASE_URL = 'https://ldqoglrfvlugryhcmmve.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkcW9nbHJmdmx1Z3J5aGNtbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODQzNjUsImV4cCI6MjA5MjI2MDM2NX0.1Sap5txxv3P-pnpLGP-3tproAzmN9o7d8EbL3803nc4'; // ← anon key 입력
 
-// Supabase 클라이언트 초기화 (여러 방식 순서대로 시도)
-let _supabase;
-if (typeof supabase !== 'undefined' && supabase.createClient) {
-  _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else if (window.supabase && window.supabase.createClient) {
-  _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else if (window.Supabase && window.Supabase.createClient) {
-  _supabase = window.Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else {
-  document.body.innerHTML = '<div style="color:red;padding:40px;font-size:18px">Supabase 라이브러리 로딩 실패. 인터넷 연결을 확인하세요.</div>';
-}
+// Supabase 클라이언트 초기화
+const _supabase = (
+  typeof supabase !== 'undefined' && supabase.createClient
+    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : window.supabase?.createClient
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : null
+);
 console.log('Supabase 초기화:', _supabase ? '성공' : '실패');
 
 // ════════════════════════════════════════════════
