@@ -142,6 +142,15 @@
   }
   .topbar-title { font-size: 16px; font-weight: 700; }
   .topbar-meta { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+  .topbar-kpi {
+    display: flex; align-items: center; gap: 20px;
+  }
+  .topbar-kpi-item {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+  }
+  .topbar-kpi-item .kpi-val { font-size: 15px; font-weight: 700; font-family: var(--mono); color: var(--text); }
+  .topbar-kpi-item .kpi-lbl { font-size: 10px; color: var(--text3); font-weight: 500; }
+  .topbar-kpi-divider { width: 1px; height: 28px; background: var(--border); }
   .content { flex: 1; overflow-y: auto; padding: 28px; }
 
   /* ── 공통 컴포넌트 ── */
@@ -277,11 +286,12 @@
   }
   .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text3); margin-top: 4px; }
 
-  .danji-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .danji-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
   .danji-card {
     background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 16px 18px;
+    padding: 16px 18px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
   }
+  .danji-card:hover { border-color: var(--accent); box-shadow: 0 2px 12px rgba(59,111,245,0.12); }
   .danji-card .danji-name { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
   .danji-rate { font-size: 22px; font-weight: 700; font-family: var(--mono); }
   .danji-rate span { font-size: 13px; font-weight: 400; color: var(--text3); }
@@ -400,7 +410,6 @@
       <div class="user-avatar" id="user-avatar">위</div>
       <div class="user-info">
         <div class="user-name" id="user-name">위원장</div>
-        <div class="user-role">위원장</div>
       </div>
     </div>
     <div class="sidebar-nav">
@@ -427,6 +436,24 @@
   <div class="main">
     <div class="topbar">
       <div class="topbar-title" id="topbar-title">종합</div>
+      <div class="topbar-kpi" id="topbar-kpi" style="display:none">
+        <div class="topbar-kpi-item">
+          <span class="kpi-val" id="kpi-yeonbun">—</span>
+          <span class="kpi-lbl">전체연번</span>
+        </div>
+        <div class="topbar-kpi-divider"></div>
+        <div class="topbar-kpi-item">
+          <span class="kpi-val" id="kpi-sedae">—</span>
+          <span class="kpi-lbl">전체세대수</span>
+        </div>
+        <div class="topbar-kpi-divider"></div>
+        <div class="topbar-kpi-item">
+          <span class="kpi-val" id="kpi-owner">—</span>
+          <span class="kpi-lbl">전체소유자수</span>
+        </div>
+        <div class="topbar-kpi-divider"></div>
+        <button class="btn btn-ghost btn-sm" id="topbar-refresh-btn" style="display:none" onclick="loadDashboardData()">🔄 새로고침</button>
+      </div>
       <div class="topbar-meta" id="topbar-meta"></div>
     </div>
     <div class="content" id="content">
@@ -497,6 +524,22 @@
   </div>
 </div>
 
+<!-- ════════════════════ 단지별 동별 동의율 팝업 ════════════════════ -->
+<div class="modal-overlay" id="danji-modal">
+  <div class="modal" style="width:600px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="danji-modal-title">—</div>
+        <div class="modal-sub" id="danji-modal-sub">동별 동의 현황</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('danji-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="danji-modal-body">
+      <div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
 <!-- 토스트 -->
 <div id="toast"></div>
 
@@ -523,9 +566,10 @@ console.log('Supabase 초기화:', _supabase ? '성공' : '실패');
 let currentPage = 'dashboard';
 let currentModalTab = 0;
 let currentOwnerData = null;
-let consentEditData = null; // { 연번, 차수, 차수명 }
-let searchType = '연번';
-let consentRounds = []; // 차수 목록 캐시
+let consentEditData = null;
+let ownerSearchType = '전체';
+let consentRounds = [];
+let currentRoundNo = 1; // 현재 선택된 차수 (단지 팝업용)
 
 // 차수 이름 표시 헬퍼 (5차는 추진위원회로 표시)
 function roundDisplayName(round) {
@@ -611,6 +655,12 @@ async function navigate(page) {
     el.classList.toggle('active', el.dataset.page === page);
   });
   document.getElementById('topbar-title').textContent = pageTitles[page];
+  // 대시보드 아닐 때 topbar KPI 숨김
+  if (page !== 'dashboard') {
+    document.getElementById('topbar-kpi').style.display = 'none';
+    document.getElementById('topbar-refresh-btn').style.display = 'none';
+    document.getElementById('topbar-meta').style.display = '';
+  }
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>';
   if (page === 'dashboard') await renderDashboard();
@@ -639,13 +689,29 @@ async function renderDashboard() {
   // 기본 선택: 가장 최근 차수
   const defaultRound = consentRounds.length ? consentRounds[consentRounds.length - 1]['차수'] : 1;
 
+  // topbar KPI + 새로고침 버튼 표시
+  document.getElementById('topbar-kpi').style.display = 'flex';
+  document.getElementById('topbar-refresh-btn').style.display = 'inline-flex';
+  document.getElementById('topbar-meta').style.display = 'none';
+
+  // KPI 데이터 로드 (연번수, 세대수, 소유자수)
+  const { count: yeonbunTotal } = await _supabase
+    .from('yeonbun').select('*', { count: 'exact', head: true }).eq('is_active', true);
+  const { count: sedaeTotal } = await _supabase
+    .from('property').select('*', { count: 'exact', head: true });
+  const { count: ownerTotal } = await _supabase
+    .from('owner').select('*', { count: 'exact', head: true });
+
+  document.getElementById('kpi-yeonbun').textContent = (yeonbunTotal||0).toLocaleString();
+  document.getElementById('kpi-sedae').textContent = (sedaeTotal||0).toLocaleString();
+  document.getElementById('kpi-owner').textContent = (ownerTotal||0).toLocaleString();
+
   content.innerHTML = `
     <div class="dash-controls">
       <label>동의 차수 선택</label>
       <select class="input" id="round-select" onchange="loadDashboardData()" style="min-width:160px">
         ${consentRounds.map(r => `<option value="${r['차수']}" ${r['차수']==defaultRound?'selected':''}>${r['차수']}차 — ${roundDisplayName(r)}</option>`).join('')}
       </select>
-      <button class="btn btn-ghost btn-sm" onclick="loadDashboardData()">🔄 새로고침</button>
     </div>
     <div id="dash-body">
       <div class="loading-center"><div class="spinner"></div> 집계 중...</div>
@@ -656,6 +722,7 @@ async function renderDashboard() {
 
 async function loadDashboardData() {
   const roundNo = parseInt(document.getElementById('round-select').value);
+  currentRoundNo = roundNo;
   const roundInfo = consentRounds.find(r => r['차수'] === roundNo);
   const dashBody = document.getElementById('dash-body');
   dashBody.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
@@ -803,8 +870,8 @@ async function loadDashboardData() {
     <div class="card" style="margin-bottom:20px">
       <div class="card-title">전체 동의 진행률</div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">
-        ${roundInfo ? roundInfo['차수']+'차 — '+roundDisplayName(roundInfo) : ''} &nbsp;|&nbsp;
-        ${roundInfo?.시작일 ? '기간: '+roundInfo['시작일']+' ~ '+(roundInfo['종료일']||'진행중') : '기간 미설정'}
+        ${roundInfo ? roundInfo['차수']+'차 — '+roundDisplayName(roundInfo) : ''}
+        ${roundInfo?.시작일 ? '&nbsp;|&nbsp; 기간: '+roundInfo['시작일']+' ~ '+(roundInfo['종료일']||'진행중') : ''}
       </div>
       <div class="progress-bar-bg">
         <div class="progress-bar-fill" style="width:${rate}%"></div>
@@ -816,12 +883,12 @@ async function loadDashboardData() {
     </div>
 
     <!-- 단지별 -->
-    <div class="section-title">단지별 동의 현황</div>
+    <div class="section-title">단지별 동의 현황 <span style="font-size:12px;font-weight:400;color:var(--text3)">— 카드를 누르면 동별 현황을 볼 수 있습니다</span></div>
     <div class="danji-grid">
       ${danjiStats.map(d => {
         const r = d.total ? (d.submitted / d.total * 100).toFixed(1) : 0;
         return `
-        <div class="danji-card">
+        <div class="danji-card" onclick="openDanjiModal('${d.danji}', ${currentRoundNo})">
           <div class="danji-name">${d.danji}</div>
           <div class="danji-rate">${r}<span>%</span></div>
           <div class="danji-detail">${d.submitted.toLocaleString()} / ${d.total.toLocaleString()} 연번</div>
@@ -833,10 +900,163 @@ async function loadDashboardData() {
 }
 
 // ════════════════════════════════════════════════
+// 단지별 동별 동의율 팝업
+// ════════════════════════════════════════════════
+async function openDanjiModal(danji, roundNo) {
+  document.getElementById('danji-modal-title').textContent = danji + ' 동별 동의 현황';
+  const roundInfo = consentRounds.find(r => r['차수'] === roundNo);
+  document.getElementById('danji-modal-sub').textContent =
+    `${roundNo}차 — ${roundInfo ? roundDisplayName(roundInfo) : ''} 기준`;
+  document.getElementById('danji-modal').classList.add('open');
+  const body = document.getElementById('danji-modal-body');
+  body.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
+
+  try {
+    // 해당 단지 부동산 코드 전체
+    let allProps = [];
+    let from = 0;
+    while (true) {
+      const { data: chunk } = await _supabase
+        .from('property').select('부동산코드, 동').eq('단지', danji).range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      allProps = allProps.concat(chunk);
+      if (chunk.length < 1000) break;
+      from += 1000;
+    }
+
+    // 동 목록 추출 (숫자형 동 = 아파트, 나머지 = 상가)
+    const dongSet = new Set(allProps.map(p => p['동']));
+    const dongList = [...dongSet].sort((a, b) => {
+      const aNum = parseInt(a), bNum = parseInt(b);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return a.localeCompare(b);
+    });
+
+    if (dongList.length === 0) {
+      body.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><p>데이터가 없습니다.</p></div>';
+      return;
+    }
+
+    // 동별 부동산코드 맵
+    const dongToCode = {};
+    allProps.forEach(p => {
+      if (!dongToCode[p['동']]) dongToCode[p['동']] = [];
+      dongToCode[p['동']].push(p['부동산코드']);
+    });
+
+    // 전체 yeonbun_property (해당 단지만)
+    const allCodes = allProps.map(p => p['부동산코드']);
+    let allYP = [];
+    for (let i = 0; i < allCodes.length; i += 500) {
+      const chunk = allCodes.slice(i, i + 500);
+      const { data } = await _supabase
+        .from('yeonbun_property').select('연번, 부동산코드').in('부동산코드', chunk);
+      if (data) allYP = allYP.concat(data);
+    }
+
+    // 활성 연번 set
+    let activeYeonbuns = new Set();
+    from = 0;
+    while (true) {
+      const { data: chunk } = await _supabase
+        .from('yeonbun').select('연번').eq('is_active', true).range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      chunk.forEach(y => activeYeonbuns.add(y['연번']));
+      if (chunk.length < 1000) break;
+      from += 1000;
+    }
+
+    // 해당 차수 제출 연번 set
+    let submittedSet = new Set();
+    from = 0;
+    while (true) {
+      const { data: chunk } = await _supabase
+        .from('consent').select('연번').eq('차수', roundNo).eq('상태', '제출').range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      chunk.forEach(c => submittedSet.add(c['연번']));
+      if (chunk.length < 1000) break;
+      from += 1000;
+    }
+
+    // 부동산코드 → 동 역맵
+    const codeToD = {};
+    allProps.forEach(p => { codeToD[p['부동산코드']] = p['동']; });
+
+    // 연번별 동 집합
+    const yeonbunToDong = {};
+    allYP.forEach(yp => {
+      const y = yp['연번'];
+      const d = codeToD[yp['부동산코드']];
+      if (!d) return;
+      if (!yeonbunToDong[y]) yeonbunToDong[y] = new Set();
+      yeonbunToDong[y].add(d);
+    });
+
+    // 동별 집계
+    const dongStats = dongList.map(dong => {
+      let total = 0, submitted = 0;
+      Object.entries(yeonbunToDong).forEach(([y, dSet]) => {
+        const yn = parseInt(y);
+        if (!activeYeonbuns.has(yn)) return;
+        if (dSet.has(dong)) {
+          total++;
+          if (submittedSet.has(yn)) submitted++;
+        }
+      });
+      return { dong, total, submitted };
+    }).filter(d => d.total > 0);
+
+    if (dongStats.length === 0) {
+      body.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><p>집계 데이터가 없습니다.</p></div>';
+      return;
+    }
+
+    const totalAll = dongStats.reduce((s, d) => s + d.total, 0);
+    const submittedAll = dongStats.reduce((s, d) => s + d.submitted, 0);
+    const rateAll = totalAll ? (submittedAll / totalAll * 100).toFixed(1) : 0;
+
+    body.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:var(--accent-soft);border-radius:8px;border:1px solid var(--accent)">
+        <span style="font-size:13px;font-weight:600;color:var(--accent)">${danji} 전체</span>
+        <span style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent)">${rateAll}%</span>
+        <span style="font-size:12px;color:var(--text3)">${submittedAll.toLocaleString()} / ${totalAll.toLocaleString()} 연번</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>동</th><th>전체연번</th><th>제출</th><th>미제출</th><th>동의율</th><th></th></tr></thead>
+          <tbody>
+            ${dongStats.map(d => {
+              const r = d.total ? (d.submitted / d.total * 100).toFixed(1) : 0;
+              const color = r >= 75 ? 'var(--green)' : r >= 50 ? 'var(--accent)' : r >= 25 ? 'var(--yellow)' : 'var(--red)';
+              return `
+              <tr>
+                <td><strong>${d.dong}동</strong></td>
+                <td class="mono">${d.total.toLocaleString()}</td>
+                <td class="mono" style="color:var(--green)">${d.submitted.toLocaleString()}</td>
+                <td class="mono" style="color:var(--yellow)">${(d.total - d.submitted).toLocaleString()}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;height:6px;background:var(--bg3);border-radius:3px;min-width:80px;overflow:hidden">
+                      <div style="height:100%;width:${r}%;background:${color};border-radius:3px;transition:width 0.4s"></div>
+                    </div>
+                    <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${color};min-width:42px">${r}%</span>
+                  </div>
+                </td>
+                <td></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    body.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
+  }
+}
+
+// ════════════════════════════════════════════════
 // 소유주명부
 // ════════════════════════════════════════════════
-let ownerSearchType = '전체';
-
 function renderOwners() {
   document.getElementById('content').innerHTML = `
     <div class="search-bar" style="flex-direction:column;align-items:flex-start;gap:14px">
