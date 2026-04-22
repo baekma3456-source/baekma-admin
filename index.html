@@ -823,6 +823,7 @@ async function loadDashboardData() {
   });
 
   // 단지별 활성 연번 집합 구성
+  const danjiList = ['3단지', '4단지', '5단지', '6단지', '상가동'];
   const danjiYeonbunMap = {};
   danjiList.forEach(d => { danjiYeonbunMap[d] = new Set(); });
   activeSet.forEach(y => {
