@@ -147,11 +147,11 @@
     display: flex; align-items: center; gap: 20px;
   }
   .topbar-kpi-item {
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    display: flex; align-items: center; gap: 8px;
   }
   .topbar-kpi-item .kpi-val { font-size: 15px; font-weight: 700; font-family: var(--mono); color: var(--text); }
-  .topbar-kpi-item .kpi-lbl { font-size: 10px; color: var(--text3); font-weight: 500; }
-  .topbar-kpi-divider { width: 1px; height: 28px; background: var(--border); }
+  .topbar-kpi-item .kpi-lbl { font-size: 11px; color: var(--text3); font-weight: 500; }
+  .topbar-kpi-divider { width: 1px; height: 20px; background: var(--border); }
   .content { flex: 1; overflow-y: auto; padding: 28px; }
 
   /* ── 공통 컴포넌트 ── */
@@ -421,9 +421,6 @@
       <div class="nav-item" data-page="owners" onclick="navigate('owners')">
         <span class="nav-icon">👥</span> 소유주명부
       </div>
-      <div class="nav-item" data-page="consent" onclick="navigate('consent')">
-        <span class="nav-icon">📋</span> 동의 관리
-      </div>
       <div class="nav-item" data-page="ops" onclick="navigate('ops')">
         <span class="nav-icon">⚙️</span> 운영 관리
       </div>
@@ -437,25 +434,27 @@
   <div class="main">
     <div class="topbar">
       <div class="topbar-title" id="topbar-title">종합</div>
-      <div class="topbar-kpi" id="topbar-kpi" style="display:none">
-        <div class="topbar-kpi-item">
-          <span class="kpi-val" id="kpi-yeonbun">—</span>
-          <span class="kpi-lbl">전체연번</span>
-        </div>
-        <div class="topbar-kpi-divider"></div>
-        <div class="topbar-kpi-item">
-          <span class="kpi-val" id="kpi-sedae">—</span>
-          <span class="kpi-lbl">전체세대수</span>
-        </div>
-        <div class="topbar-kpi-divider"></div>
-        <div class="topbar-kpi-item">
-          <span class="kpi-val" id="kpi-owner">—</span>
-          <span class="kpi-lbl">전체소유자수</span>
-        </div>
-        <div class="topbar-kpi-divider"></div>
+      <div style="display:flex;align-items:center;gap:12px">
         <button class="btn btn-ghost btn-sm" id="topbar-refresh-btn" style="display:none" onclick="loadDashboardData()">🔄 새로고침</button>
+        <div class="topbar-meta" id="topbar-meta"></div>
       </div>
-      <div class="topbar-meta" id="topbar-meta"></div>
+    </div>
+    <!-- KPI 바 (종합 탭에서만 표시) -->
+    <div id="topbar-kpi-bar" style="display:none;padding:8px 28px;background:var(--bg2);border-bottom:1px solid var(--border);display:none;align-items:center;gap:24px">
+      <div class="topbar-kpi-item">
+        <span class="kpi-lbl">전체연번</span>
+        <span class="kpi-val" id="kpi-yeonbun">—</span>
+      </div>
+      <div class="topbar-kpi-divider"></div>
+      <div class="topbar-kpi-item">
+        <span class="kpi-lbl">전체세대수</span>
+        <span class="kpi-val" id="kpi-sedae">—</span>
+      </div>
+      <div class="topbar-kpi-divider"></div>
+      <div class="topbar-kpi-item">
+        <span class="kpi-lbl">전체소유자수</span>
+        <span class="kpi-val" id="kpi-owner">—</span>
+      </div>
     </div>
     <div class="content" id="content">
       <!-- 각 페이지가 여기에 렌더링됨 -->
@@ -646,7 +645,6 @@ _supabase.auth.getSession().then(async ({ data: { session } }) => {
 const pageTitles = {
   dashboard: '종합',
   owners: '소유주명부',
-  consent: '동의 관리',
   ops: '운영 관리'
 };
 
@@ -656,17 +654,20 @@ async function navigate(page) {
     el.classList.toggle('active', el.dataset.page === page);
   });
   document.getElementById('topbar-title').textContent = pageTitles[page];
-  // 대시보드 아닐 때 topbar KPI 숨김
-  if (page !== 'dashboard') {
-    document.getElementById('topbar-kpi').style.display = 'none';
-    document.getElementById('topbar-refresh-btn').style.display = 'none';
-    document.getElementById('topbar-meta').style.display = '';
+  // KPI 바 + 새로고침: 종합 탭에서만 표시
+  const kpiBar = document.getElementById('topbar-kpi-bar');
+  const refreshBtn = document.getElementById('topbar-refresh-btn');
+  if (page === 'dashboard') {
+    kpiBar.style.display = 'flex';
+    refreshBtn.style.display = 'inline-flex';
+  } else {
+    kpiBar.style.display = 'none';
+    refreshBtn.style.display = 'none';
   }
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>';
   if (page === 'dashboard') await renderDashboard();
-  else if (page === 'owners') renderOwners();
-  else if (page === 'consent') await renderConsent();
+  else if (page === 'owners') await renderOwners();
   else if (page === 'ops') await renderOps();
 }
 
@@ -690,10 +691,9 @@ async function renderDashboard() {
   // 기본 선택: 가장 최근 차수
   const defaultRound = consentRounds.length ? consentRounds[consentRounds.length - 1]['차수'] : 1;
 
-  // topbar KPI + 새로고침 버튼 표시
-  document.getElementById('topbar-kpi').style.display = 'flex';
+  // topbar KPI 바 + 새로고침 표시
+  document.getElementById('topbar-kpi-bar').style.display = 'flex';
   document.getElementById('topbar-refresh-btn').style.display = 'inline-flex';
-  document.getElementById('topbar-meta').style.display = 'none';
 
   // KPI 데이터 로드 (연번수, 세대수, 소유자수)
   const { count: yeonbunTotal } = await _supabase
@@ -760,12 +760,12 @@ async function loadDashboardData() {
   }
   const activeSet = new Set(allActiveYeonbun);
 
-  // 2) 전체 property → 단지 매핑
+  // 2) 전체 property → 단지 매핑 (부동산유형 포함)
   let allProps = [];
   from = 0;
   while (true) {
     const { data: chunk } = await _supabase
-      .from('property').select('부동산코드, 단지').range(from, from + 999);
+      .from('property').select('부동산코드, 단지, 부동산유형').range(from, from + 999);
     if (!chunk || chunk.length === 0) break;
     allProps = allProps.concat(chunk);
     if (chunk.length < 1000) break;
@@ -798,16 +798,28 @@ async function loadDashboardData() {
     from += 1000;
   }
 
-  // 5) 단지별 집계 (JS 메모리에서 계산)
-  const danjiList = ['3단지', '4단지', '5단지', '6단지', '상가'];
-  // 연번별 단지 결정: 해당 연번의 부동산코드 중 단지 목록 추출
+  // 연번별 단지/상가 분류
+  // 아파트 단지: property.단지 기준
+  // 상가동: property.부동산유형이 상가동/분산상가/백마상가/설촌상가인 것 전체
+  const codeToType = {};  // 부동산코드 → 부동산유형
+  allProps.forEach(p => { codeToType[p['부동산코드']] = p['부동산유형'] || ''; });
+
+  const SANGGA_TYPES = new Set(['상가동', '분산상가', '백마상가', '설촌상가']);
+
   const yeonbunToDanji = {};
   allYP.forEach(yp => {
     const y = yp['연번'];
-    const d = codeToD[yp['부동산코드']];
-    if (!d) return;
+    const code = yp['부동산코드'];
+    const danji = codeToD[code];
+    const ptype = codeToType[code];
+    if (!danji && !ptype) return;
+
+    // 상가 유형이면 '상가동'으로 분류
+    const label = SANGGA_TYPES.has(ptype) ? '상가동' : danji;
+    if (!label) return;
+
     if (!yeonbunToDanji[y]) yeonbunToDanji[y] = new Set();
-    yeonbunToDanji[y].add(d);
+    yeonbunToDanji[y].add(label);
   });
 
   // 단지별 활성 연번 집합 구성
@@ -904,7 +916,7 @@ async function loadDashboardData() {
 // 단지별 동별 동의율 팝업
 // ════════════════════════════════════════════════
 async function openDanjiModal(danji, roundNo) {
-  document.getElementById('danji-modal-title').textContent = danji + ' 동별 동의 현황';
+  document.getElementById('danji-modal-title').textContent = danji + ' 동의 현황';
   const roundInfo = consentRounds.find(r => r['차수'] === roundNo);
   document.getElementById('danji-modal-sub').textContent =
     `${roundNo}차 — ${roundInfo ? roundDisplayName(roundInfo) : ''} 기준`;
@@ -913,39 +925,68 @@ async function openDanjiModal(danji, roundNo) {
   body.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
 
   try {
-    // 해당 단지 부동산 코드 전체
+    const isSangga = danji === '상가동';
+    const SANGGA_TYPES = ['상가동', '분산상가', '백마상가', '설촌상가'];
+
+    // 해당 단지/상가 property 로드
     let allProps = [];
-    let from = 0;
-    while (true) {
-      const { data: chunk } = await _supabase
-        .from('property').select('부동산코드, 동').eq('단지', danji).range(from, from + 999);
-      if (!chunk || chunk.length === 0) break;
-      allProps = allProps.concat(chunk);
-      if (chunk.length < 1000) break;
-      from += 1000;
+    if (isSangga) {
+      // 상가동: 부동산유형으로 필터
+      for (const ptype of SANGGA_TYPES) {
+        let from = 0;
+        while (true) {
+          const { data: chunk } = await _supabase
+            .from('property').select('부동산코드, 동, 단지, 부동산유형').eq('부동산유형', ptype).range(from, from + 999);
+          if (!chunk || chunk.length === 0) break;
+          allProps = allProps.concat(chunk);
+          if (chunk.length < 1000) break;
+          from += 1000;
+        }
+      }
+    } else {
+      // 아파트 단지: 단지 컬럼으로 필터, 숫자 동만 (상가 제외)
+      let from = 0;
+      while (true) {
+        const { data: chunk } = await _supabase
+          .from('property').select('부동산코드, 동, 단지, 부동산유형').eq('단지', danji).range(from, from + 999);
+        if (!chunk || chunk.length === 0) break;
+        // 숫자형 동만 (아파트) — 상가 접두사 제외
+        allProps = allProps.concat(chunk.filter(p => /^\d+$/.test(p['동'])));
+        if (chunk.length < 1000) break;
+        from += 1000;
+      }
     }
 
-    // 동 목록 추출 (숫자형 동 = 아파트, 나머지 = 상가)
-    const dongSet = new Set(allProps.map(p => p['동']));
-    const dongList = [...dongSet].sort((a, b) => {
-      const aNum = parseInt(a), bNum = parseInt(b);
-      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-      return a.localeCompare(b);
-    });
-
-    if (dongList.length === 0) {
+    if (allProps.length === 0) {
       body.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><p>데이터가 없습니다.</p></div>';
       return;
     }
 
-    // 동별 부동산코드 맵
-    const dongToCode = {};
+    // 그룹 기준 결정
+    // 상가동: 부동산유형별(3단지상가동→단지+유형, 백마상가, 설촌상가 등)
+    // 아파트: 동 번호
+    const codeToGroup = {};
     allProps.forEach(p => {
-      if (!dongToCode[p['동']]) dongToCode[p['동']] = [];
-      dongToCode[p['동']].push(p['부동산코드']);
+      let group;
+      if (isSangga) {
+        // 그룹명: 단지+부동산유형  예) "3단지 상가동", "백마상가", "설촌상가"
+        if (p['부동산유형'] === '백마상가') group = '백마상가';
+        else if (p['부동산유형'] === '설촌상가') group = '설촌상가';
+        else group = p['단지'] + ' ' + p['부동산유형'];
+      } else {
+        group = p['동'];
+      }
+      codeToGroup[p['부동산코드']] = group;
     });
 
-    // 전체 yeonbun_property (해당 단지만)
+    const groupSet = new Set(Object.values(codeToGroup));
+    const groupList = [...groupSet].sort((a, b) => {
+      const aNum = parseInt(a), bNum = parseInt(b);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return a.localeCompare(b, 'ko');
+    });
+
+    // 전체 yeonbun_property (해당 부동산들)
     const allCodes = allProps.map(p => p['부동산코드']);
     let allYP = [];
     for (let i = 0; i < allCodes.length; i += 500) {
@@ -957,7 +998,7 @@ async function openDanjiModal(danji, roundNo) {
 
     // 활성 연번 set
     let activeYeonbuns = new Set();
-    from = 0;
+    let from = 0;
     while (true) {
       const { data: chunk } = await _supabase
         .from('yeonbun').select('연번').eq('is_active', true).range(from, from + 999);
@@ -979,42 +1020,39 @@ async function openDanjiModal(danji, roundNo) {
       from += 1000;
     }
 
-    // 부동산코드 → 동 역맵
-    const codeToD = {};
-    allProps.forEach(p => { codeToD[p['부동산코드']] = p['동']; });
-
-    // 연번별 동 집합
-    const yeonbunToDong = {};
+    // 연번별 그룹 집합
+    const yeonbunToGroup = {};
     allYP.forEach(yp => {
       const y = yp['연번'];
-      const d = codeToD[yp['부동산코드']];
-      if (!d) return;
-      if (!yeonbunToDong[y]) yeonbunToDong[y] = new Set();
-      yeonbunToDong[y].add(d);
+      const g = codeToGroup[yp['부동산코드']];
+      if (!g) return;
+      if (!yeonbunToGroup[y]) yeonbunToGroup[y] = new Set();
+      yeonbunToGroup[y].add(g);
     });
 
-    // 동별 집계
-    const dongStats = dongList.map(dong => {
+    // 그룹별 집계
+    const groupStats = groupList.map(group => {
       let total = 0, submitted = 0;
-      Object.entries(yeonbunToDong).forEach(([y, dSet]) => {
+      Object.entries(yeonbunToGroup).forEach(([y, gSet]) => {
         const yn = parseInt(y);
         if (!activeYeonbuns.has(yn)) return;
-        if (dSet.has(dong)) {
+        if (gSet.has(group)) {
           total++;
           if (submittedSet.has(yn)) submitted++;
         }
       });
-      return { dong, total, submitted };
+      return { group, total, submitted };
     }).filter(d => d.total > 0);
 
-    if (dongStats.length === 0) {
+    if (groupStats.length === 0) {
       body.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><p>집계 데이터가 없습니다.</p></div>';
       return;
     }
 
-    const totalAll = dongStats.reduce((s, d) => s + d.total, 0);
-    const submittedAll = dongStats.reduce((s, d) => s + d.submitted, 0);
+    const totalAll = groupStats.reduce((s, d) => s + d.total, 0);
+    const submittedAll = groupStats.reduce((s, d) => s + d.submitted, 0);
     const rateAll = totalAll ? (submittedAll / totalAll * 100).toFixed(1) : 0;
+    const groupLabel = isSangga ? '상가' : '동';
 
     body.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:var(--accent-soft);border-radius:8px;border:1px solid var(--accent)">
@@ -1024,14 +1062,15 @@ async function openDanjiModal(danji, roundNo) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>동</th><th>전체연번</th><th>제출</th><th>미제출</th><th>동의율</th><th></th></tr></thead>
+          <thead><tr><th>${groupLabel}</th><th>전체연번</th><th>제출</th><th>미제출</th><th>동의율</th></tr></thead>
           <tbody>
-            ${dongStats.map(d => {
+            ${groupStats.map(d => {
               const r = d.total ? (d.submitted / d.total * 100).toFixed(1) : 0;
               const color = r >= 75 ? 'var(--green)' : r >= 50 ? 'var(--accent)' : r >= 25 ? 'var(--yellow)' : 'var(--red)';
+              const label = isSangga ? d.group : d.group + '동';
               return `
               <tr>
-                <td><strong>${d.dong}동</strong></td>
+                <td><strong>${label}</strong></td>
                 <td class="mono">${d.total.toLocaleString()}</td>
                 <td class="mono" style="color:var(--green)">${d.submitted.toLocaleString()}</td>
                 <td class="mono" style="color:var(--yellow)">${(d.total - d.submitted).toLocaleString()}</td>
@@ -1043,7 +1082,6 @@ async function openDanjiModal(danji, roundNo) {
                     <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${color};min-width:42px">${r}%</span>
                   </div>
                 </td>
-                <td></td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -1056,12 +1094,52 @@ async function openDanjiModal(danji, roundNo) {
 }
 
 // ════════════════════════════════════════════════
-// 소유주명부
+// 소유주명부 (동의관리 통합)
 // ════════════════════════════════════════════════
-function renderOwners() {
+let ownersSubTab = 'list'; // 'list' | 'consent'
+
+async function renderOwners() {
   document.getElementById('content').innerHTML = `
+    <!-- 서브탭 -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
+      <button id="subtab-list" onclick="switchOwnersSubTab('list')"
+        style="padding:10px 22px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;
+               border-bottom:2px solid var(--accent);margin-bottom:-2px;color:var(--accent);font-family:var(--font)">
+        👥 소유주명부
+      </button>
+      <button id="subtab-consent" onclick="switchOwnersSubTab('consent')"
+        style="padding:10px 22px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;
+               border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text3);font-family:var(--font)">
+        📋 동의 관리
+      </button>
+    </div>
+    <div id="owners-subtab-content"></div>
+  `;
+  ownersSubTab = 'list';
+  await renderOwnerListSubTab();
+}
+
+function switchOwnersSubTab(tab) {
+  ownersSubTab = tab;
+  // 탭 스타일 갱신
+  ['list','consent'].forEach(t => {
+    const btn = document.getElementById('subtab-' + t);
+    if (!btn) return;
+    if (t === tab) {
+      btn.style.borderBottomColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+    } else {
+      btn.style.borderBottomColor = 'transparent';
+      btn.style.color = 'var(--text3)';
+    }
+  });
+  if (tab === 'list') renderOwnerListSubTab();
+  else renderConsentSubTab();
+}
+
+function renderOwnerListSubTab() {
+  document.getElementById('owners-subtab-content').innerHTML = `
     <div class="search-bar" style="flex-direction:column;align-items:flex-start;gap:14px">
-      <!-- 라디오 필터 -->
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text3);margin-right:4px;font-weight:600">검색 기준</span>
         ${['전체','연번','이름','부동산ID','전화번호'].map(t => `
@@ -1079,7 +1157,6 @@ function renderOwners() {
           </label>
         `).join('')}
       </div>
-      <!-- 검색창 (전체 선택 시 숨김) -->
       <div id="owner-search-input-wrap" style="display:none;gap:8px;width:100%;max-width:520px">
         <input class="input" id="owner-search-input" placeholder="검색어 입력 후 Enter 또는 검색 클릭"
           onkeydown="if(event.key==='Enter') searchOwners()" style="flex:1;width:100%">
@@ -1092,8 +1169,37 @@ function renderOwners() {
     </div>
   `;
   ownerSearchType = '전체';
-  // 디폴트: 전체 데이터 바로 표시
   loadAllOwners();
+}
+
+async function renderConsentSubTab() {
+  // 차수 목록 로드
+  if (!consentRounds.length) {
+    const { data: rounds } = await _supabase.from('consent_round').select('*').order('차수');
+    consentRounds = rounds || [];
+  }
+  const defaultRound = consentRounds.length ? consentRounds[consentRounds.length - 1]['차수'] : 1;
+
+  document.getElementById('owners-subtab-content').innerHTML = `
+    <div class="consent-search-bar">
+      <select class="input" id="consent-round-filter" style="min-width:160px">
+        ${consentRounds.map(r => `<option value="${r['차수']}" ${r['차수']==defaultRound?'selected':''}>${r['차수']}차 — ${roundDisplayName(r)}</option>`).join('')}
+      </select>
+      <select class="input" id="consent-status-filter" style="min-width:120px">
+        <option value="">전체 상태</option>
+        <option value="미제출">미제출</option>
+        <option value="제출">제출</option>
+        <option value="반대">반대</option>
+      </select>
+      <input class="input" id="consent-search-input" placeholder="연번 또는 이름 검색" style="min-width:200px"
+        onkeydown="if(event.key==='Enter') loadConsentList()">
+      <button class="btn btn-blue" onclick="loadConsentList()">🔍 조회</button>
+    </div>
+    <div class="result-count" id="consent-result-count"></div>
+    <div id="consent-list">
+      <div class="empty-state"><div class="empty-icon">📋</div><p>조건을 선택하고 조회 버튼을 누르세요.</p></div>
+    </div>
+  `;
 }
 
 function setOwnerSearchType(type) {
@@ -1608,12 +1714,12 @@ async function saveConsentEdit() {
   showToast('저장되었습니다.', 'success');
   closeModal('consent-edit-modal');
 
-  // 현재 탭이 소유주 모달 동의탭이면 새로고침
+  // 소유주 모달 동의탭이면 새로고침
   if (document.getElementById('owner-modal').classList.contains('open') && currentModalTab === 1) {
     await loadModalTab(1);
   }
-  // 동의 관리 페이지라면 목록 새로고침
-  if (currentPage === 'consent') await loadConsentList();
+  // 동의관리 서브탭이 열려 있으면 목록 새로고침
+  if (currentPage === 'owners' && ownersSubTab === 'consent') await loadConsentList();
 }
 
 // ════════════════════════════════════════════════
