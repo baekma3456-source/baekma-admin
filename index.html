@@ -728,127 +728,83 @@ async function loadDashboardData() {
   const dashBody = document.getElementById('dash-body');
   dashBody.innerHTML = '<div class="loading-center"><div class="spinner"></div> 집계 중...</div>';
 
-  // 전체 활성 연번 수 (count)
-  const { count: totalYeonbun } = await _supabase
-    .from('yeonbun').select('*', { count: 'exact', head: true }).eq('is_active', true);
+  try {
+    // ── 1) 빠른 집계 (count 쿼리 3개 병렬) ──
+    const [
+      { count: totalYeonbun },
+      { count: submittedCount },
+      { count: opposedCount }
+    ] = await Promise.all([
+      _supabase.from('yeonbun').select('*', { count: 'exact', head: true }).eq('is_active', true),
+      _supabase.from('consent').select('*', { count: 'exact', head: true }).eq('차수', roundNo).eq('상태', '제출'),
+      _supabase.from('consent').select('*', { count: 'exact', head: true }).eq('차수', roundNo).eq('상태', '반대')
+    ]);
 
-  // 해당 차수 제출 연번 수 (count) — Supabase count 사용으로 1000건 제한 우회
-  const { count: submittedCount } = await _supabase
-    .from('consent')
-    .select('*', { count: 'exact', head: true })
-    .eq('차수', roundNo)
-    .eq('상태', '제출');
+    const finalSubmitted = submittedCount || 0;
+    const finalOpposed  = opposedCount  || 0;
+    const rate = totalYeonbun ? (finalSubmitted / totalYeonbun * 100).toFixed(2) : 0;
+    const notSubmitted = (totalYeonbun || 0) - finalSubmitted - finalOpposed;
 
-  // 반대 연번 수 (count)
-  const { count: opposedCount } = await _supabase
-    .from('consent')
-    .select('*', { count: 'exact', head: true })
-    .eq('차수', roundNo)
-    .eq('상태', '반대');
+    console.log(`[집계] ${roundNo}차 | 전체연번:${totalYeonbun} | 제출:${finalSubmitted} | 반대:${finalOpposed} | 동의율:${rate}%`);
 
-  // 단지별 집계 — 전체 활성 연번 목록을 한 번에 로드 후 JS에서 집계
-  // 1) 전체 활성 연번 목록 (연번 번호만, 페이지네이션)
-  let allActiveYeonbun = [];
-  let from = 0;
-  while (true) {
-    const { data: chunk } = await _supabase
-      .from('yeonbun').select('연번').eq('is_active', true).range(from, from + 999);
-    if (!chunk || chunk.length === 0) break;
-    allActiveYeonbun = allActiveYeonbun.concat(chunk.map(y => y['연번']));
-    if (chunk.length < 1000) break;
-    from += 1000;
-  }
-  const activeSet = new Set(allActiveYeonbun);
+    // ── 2) 단지별 집계 — 데이터 4종 병렬 로드 ──
+    const fetchAll = async (table, select, filters = []) => {
+      let rows = [], page = 0;
+      while (page < 20) { // 최대 20페이지(20,000건) 안전 장치
+        let q = _supabase.from(table).select(select).range(page * 1000, page * 1000 + 999);
+        filters.forEach(([col, val]) => { q = q.eq(col, val); });
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        rows = rows.concat(data);
+        if (data.length < 1000) break;
+        page++;
+      }
+      return rows;
+    };
 
-  // 2) 전체 property → 단지 매핑 (부동산유형 포함)
-  let allProps = [];
-  from = 0;
-  while (true) {
-    const { data: chunk } = await _supabase
-      .from('property').select('부동산코드, 단지, 부동산유형').range(from, from + 999);
-    if (!chunk || chunk.length === 0) break;
-    allProps = allProps.concat(chunk);
-    if (chunk.length < 1000) break;
-    from += 1000;
-  }
-  const codeToD = {};
-  allProps.forEach(p => { codeToD[p['부동산코드']] = p['단지']; });
+    const [allYeonbun, allProps, allYP, submittedList] = await Promise.all([
+      fetchAll('yeonbun',          '연번',                     [['is_active', true]]),
+      fetchAll('property',         '부동산코드,단지,부동산유형', []),
+      fetchAll('yeonbun_property', '연번,부동산코드',           []),
+      fetchAll('consent',          '연번',                     [['차수', roundNo], ['상태', '제출']])
+    ]);
 
-  // 3) 전체 yeonbun_property
-  let allYP = [];
-  from = 0;
-  while (true) {
-    const { data: chunk } = await _supabase
-      .from('yeonbun_property').select('연번, 부동산코드').range(from, from + 999);
-    if (!chunk || chunk.length === 0) break;
-    allYP = allYP.concat(chunk);
-    if (chunk.length < 1000) break;
-    from += 1000;
-  }
-
-  // 4) 해당 차수 제출된 연번 목록
-  let submittedYeonbuns = new Set();
-  from = 0;
-  while (true) {
-    const { data: chunk } = await _supabase
-      .from('consent').select('연번').eq('차수', roundNo).eq('상태', '제출').range(from, from + 999);
-    if (!chunk || chunk.length === 0) break;
-    chunk.forEach(c => submittedYeonbuns.add(c['연번']));
-    if (chunk.length < 1000) break;
-    from += 1000;
-  }
-
-  // 연번별 단지/상가 분류
-  // 아파트 단지: property.단지 기준
-  // 상가동: property.부동산유형이 상가동/분산상가/백마상가/설촌상가인 것 전체
-  const codeToType = {};  // 부동산코드 → 부동산유형
-  allProps.forEach(p => { codeToType[p['부동산코드']] = p['부동산유형'] || ''; });
-
-  const SANGGA_TYPES = new Set(['상가동', '분산상가', '백마상가', '설촌상가']);
-
-  const yeonbunToDanji = {};
-  allYP.forEach(yp => {
-    const y = yp['연번'];
-    const code = yp['부동산코드'];
-    const danji = codeToD[code];
-    const ptype = codeToType[code];
-    if (!danji && !ptype) return;
-
-    // 상가 유형이면 '상가동'으로 분류
-    const label = SANGGA_TYPES.has(ptype) ? '상가동' : danji;
-    if (!label) return;
-
-    if (!yeonbunToDanji[y]) yeonbunToDanji[y] = new Set();
-    yeonbunToDanji[y].add(label);
-  });
-
-  // 단지별 활성 연번 집합 구성
-  const danjiList = ['3단지', '4단지', '5단지', '6단지', '상가동'];
-  const danjiYeonbunMap = {};
-  danjiList.forEach(d => { danjiYeonbunMap[d] = new Set(); });
-  activeSet.forEach(y => {
-    const danjiSet = yeonbunToDanji[y];
-    if (!danjiSet) return;
-    danjiSet.forEach(d => {
-      if (danjiYeonbunMap[d]) danjiYeonbunMap[d].add(y);
+    // ── 3) JS 메모리에서 단지별 집계 ──
+    const activeSet       = new Set(allYeonbun.map(y => y['연번']));
+    const submittedSet    = new Set(submittedList.map(c => c['연번']));
+    const SANGGA_TYPES    = new Set(['상가동', '분산상가', '백마상가', '설촌상가']);
+    const codeToD         = {};
+    const codeToType      = {};
+    allProps.forEach(p => {
+      codeToD[p['부동산코드']]    = p['단지'];
+      codeToType[p['부동산코드']] = p['부동산유형'] || '';
     });
-  });
 
-  const danjiStats = danjiList.map(danji => {
-    const ySet = danjiYeonbunMap[danji];
-    const total = ySet.size;
-    let submitted = 0;
-    ySet.forEach(y => { if (submittedYeonbuns.has(y)) submitted++; });
-    return { danji, total, submitted };
-  });
+    const yeonbunToDanji = {};
+    allYP.forEach(yp => {
+      const y    = yp['연번'];
+      const code = yp['부동산코드'];
+      const label = SANGGA_TYPES.has(codeToType[code]) ? '상가동' : codeToD[code];
+      if (!label) return;
+      if (!yeonbunToDanji[y]) yeonbunToDanji[y] = new Set();
+      yeonbunToDanji[y].add(label);
+    });
 
-  const finalSubmitted = submittedCount || 0;
-  const finalOpposed = opposedCount || 0;
-  const rate = totalYeonbun ? (finalSubmitted / totalYeonbun * 100).toFixed(2) : 0;
-  const notSubmitted = totalYeonbun - finalSubmitted - finalOpposed;
+    const danjiList = ['3단지', '4단지', '5단지', '6단지', '상가동'];
+    const danjiYeonbunMap = {};
+    danjiList.forEach(d => { danjiYeonbunMap[d] = new Set(); });
+    activeSet.forEach(y => {
+      (yeonbunToDanji[y] || new Set()).forEach(d => {
+        if (danjiYeonbunMap[d]) danjiYeonbunMap[d].add(y);
+      });
+    });
 
-  // 진단 로그 (동의율 이상 시 콘솔에서 확인)
-  console.log(`[집계] ${roundNo}차 | 전체연번:${totalYeonbun} | 제출:${finalSubmitted} | 반대:${finalOpposed} | 동의율:${rate}%`);
+    const danjiStats = danjiList.map(danji => {
+      const ySet = danjiYeonbunMap[danji];
+      let submitted = 0;
+      ySet.forEach(y => { if (submittedSet.has(y)) submitted++; });
+      return { danji, total: ySet.size, submitted };
+    });
 
   dashBody.innerHTML = `
     <!-- 요약 카드 -->
@@ -911,6 +867,10 @@ async function loadDashboardData() {
       }).join('')}
     </div>
   `;
+  } catch(e) {
+    console.error('[대시보드 오류]', e);
+    dashBody.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>집계 중 오류가 발생했습니다.<br><small style="color:var(--text3)">${e.message}</small></p></div>`;
+  }
 }
 
 // ════════════════════════════════════════════════
