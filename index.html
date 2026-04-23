@@ -407,10 +407,11 @@
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
       <div class="site-sub">관리자앱</div>
     </div>
-    <div class="sidebar-user">
+    <div class="sidebar-user" onclick="openPasswordModal()" style="cursor:pointer" title="클릭하여 비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
       <div class="user-info">
         <div class="user-name" id="user-name">위원장</div>
+        <div style="font-size:10px;color:var(--text3)">🔑 비밀번호 변경</div>
       </div>
     </div>
     <div class="sidebar-nav">
@@ -420,6 +421,9 @@
       </div>
       <div class="nav-item" data-page="owners" onclick="navigate('owners')">
         <span class="nav-icon">👥</span> 소유주명부
+      </div>
+      <div class="nav-item" data-page="payment" onclick="navigate('payment')">
+        <span class="nav-icon">💰</span> 운영경비 납입
       </div>
       <div class="nav-item" data-page="ops" onclick="navigate('ops')">
         <span class="nav-icon">⚙️</span> 운영 관리
@@ -433,27 +437,30 @@
   <!-- 메인 -->
   <div class="main">
     <div class="topbar">
-      <div class="topbar-title" id="topbar-title">종합</div>
+      <div style="display:flex;align-items:center;gap:20px">
+        <div class="topbar-title" id="topbar-title">종합</div>
+        <!-- KPI — 항상 topbar 안에 표시 -->
+        <div id="topbar-kpi-bar" style="display:none;align-items:center;gap:16px">
+          <div class="topbar-kpi-divider"></div>
+          <div class="topbar-kpi-item">
+            <span class="kpi-lbl">전체연번</span>
+            <span class="kpi-val" id="kpi-yeonbun">—</span>
+          </div>
+          <div class="topbar-kpi-divider"></div>
+          <div class="topbar-kpi-item">
+            <span class="kpi-lbl">전체세대수</span>
+            <span class="kpi-val" id="kpi-sedae">—</span>
+          </div>
+          <div class="topbar-kpi-divider"></div>
+          <div class="topbar-kpi-item">
+            <span class="kpi-lbl">전체소유자수</span>
+            <span class="kpi-val" id="kpi-owner">—</span>
+          </div>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;gap:12px">
         <button class="btn btn-ghost btn-sm" id="topbar-refresh-btn" style="display:none" onclick="loadDashboardData()">🔄 새로고침</button>
         <div class="topbar-meta" id="topbar-meta"></div>
-      </div>
-    </div>
-    <!-- KPI 바 (종합 탭에서만 표시) -->
-    <div id="topbar-kpi-bar" style="display:none;padding:8px 28px;background:var(--bg2);border-bottom:1px solid var(--border);display:none;align-items:center;gap:24px">
-      <div class="topbar-kpi-item">
-        <span class="kpi-lbl">전체연번</span>
-        <span class="kpi-val" id="kpi-yeonbun">—</span>
-      </div>
-      <div class="topbar-kpi-divider"></div>
-      <div class="topbar-kpi-item">
-        <span class="kpi-lbl">전체세대수</span>
-        <span class="kpi-val" id="kpi-sedae">—</span>
-      </div>
-      <div class="topbar-kpi-divider"></div>
-      <div class="topbar-kpi-item">
-        <span class="kpi-lbl">전체소유자수</span>
-        <span class="kpi-val" id="kpi-owner">—</span>
       </div>
     </div>
     <div class="content" id="content">
@@ -536,6 +543,40 @@
     </div>
     <div class="modal-body" id="danji-modal-body">
       <div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ 비밀번호 변경 모달 ════════════════════ -->
+<div class="modal-overlay" id="password-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">비밀번호 변경</div>
+        <div class="modal-sub" id="pw-modal-sub">위원장 계정</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('password-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;gap:14px;">
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">이메일 (아이디)</div>
+          <input class="input" id="pw-email-display" disabled style="width:100%;background:var(--bg4);color:var(--text3)">
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">새 비밀번호</div>
+          <input class="input" type="password" id="pw-new" placeholder="새 비밀번호 입력 (8자 이상)" style="width:100%">
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">새 비밀번호 확인</div>
+          <input class="input" type="password" id="pw-confirm" placeholder="새 비밀번호 다시 입력" style="width:100%">
+        </div>
+        <div id="pw-err" style="font-size:12px;color:var(--red);min-height:18px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="closeModal('password-modal')">취소</button>
+          <button class="btn btn-blue" id="pw-save-btn" onclick="savePassword()">🔑 변경 저장</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -645,6 +686,7 @@ _supabase.auth.getSession().then(async ({ data: { session } }) => {
 const pageTitles = {
   dashboard: '종합',
   owners: '소유주명부',
+  payment: '운영경비 납입',
   ops: '운영 관리'
 };
 
@@ -668,6 +710,7 @@ async function navigate(page) {
   content.innerHTML = '<div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>';
   if (page === 'dashboard') await renderDashboard();
   else if (page === 'owners') await renderOwners();
+  else if (page === 'payment') await renderPayment();
   else if (page === 'ops') await renderOps();
 }
 
@@ -1753,6 +1796,271 @@ VALUES ('복사한-UUID', '이메일', '이름', '운영진');
       </div>
     </div>
   `;
+}
+
+// ════════════════════════════════════════════════
+// 비밀번호 변경
+// ════════════════════════════════════════════════
+async function openPasswordModal() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  document.getElementById('pw-email-display').value = user?.email || '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-err').textContent = '';
+  document.getElementById('password-modal').classList.add('open');
+}
+
+async function savePassword() {
+  const newPw = document.getElementById('pw-new').value;
+  const confirmPw = document.getElementById('pw-confirm').value;
+  const errEl = document.getElementById('pw-err');
+  const btn = document.getElementById('pw-save-btn');
+
+  errEl.textContent = '';
+  if (newPw.length < 8) { errEl.textContent = '비밀번호는 8자 이상이어야 합니다.'; return; }
+  if (newPw !== confirmPw) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+
+  btn.textContent = '저장 중...'; btn.disabled = true;
+  const { error } = await _supabase.auth.updateUser({ password: newPw });
+  btn.textContent = '🔑 변경 저장'; btn.disabled = false;
+
+  if (error) { errEl.textContent = '변경 실패: ' + error.message; return; }
+  showToast('비밀번호가 변경되었습니다.', 'success');
+  closeModal('password-modal');
+}
+
+// ════════════════════════════════════════════════
+// 운영경비 납입 현황
+// ════════════════════════════════════════════════
+async function renderPayment() {
+  const content = document.getElementById('content');
+
+  // 납부 회차 목록 로드
+  const { data: rounds } = await _supabase.from('payment_round').select('*').order('회차');
+  const roundList = rounds || [];
+  const defaultRound = roundList.length ? roundList[0]['회차'] : 1;
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <label style="font-size:13px;color:var(--text2)">납부 회차</label>
+      <select class="input" id="pay-round-filter" style="min-width:160px" onchange="loadPaymentList()">
+        ${roundList.map(r => `<option value="${r['회차']}" ${r['회차']==defaultRound?'selected':''}>${r['회차']}회차 — ${r['이름']||''} (기준: ${r['금액기준']?r['금액기준'].toLocaleString()+'원':'—'})</option>`).join('')}
+      </select>
+      <input class="input" id="pay-search-input" placeholder="연번 또는 이름 검색" style="min-width:200px"
+        onkeydown="if(event.key==='Enter') loadPaymentList()">
+      <select class="input" id="pay-status-filter" style="min-width:120px" onchange="loadPaymentList()">
+        <option value="">전체</option>
+        <option value="납부">납부 완료</option>
+        <option value="미납">미납</option>
+      </select>
+      <button class="btn btn-blue" onclick="loadPaymentList()">🔍 조회</button>
+    </div>
+    <div id="pay-summary" style="margin-bottom:16px"></div>
+    <div class="result-count" id="pay-result-count"></div>
+    <div id="pay-list">
+      <div class="loading-center"><div class="spinner"></div> 불러오는 중...</div>
+    </div>
+  `;
+
+  await loadPaymentList();
+}
+
+async function loadPaymentList() {
+  const roundNo = parseInt(document.getElementById('pay-round-filter').value);
+  const keyword = document.getElementById('pay-search-input')?.value.trim() || '';
+  const statusFilter = document.getElementById('pay-status-filter')?.value || '';
+  const listEl = document.getElementById('pay-list');
+  const summaryEl = document.getElementById('pay-summary');
+  const countEl = document.getElementById('pay-result-count');
+  listEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 조회 중...</div>';
+
+  try {
+    // 해당 회차 납부 기록 전체 로드
+    let allPay = [], from = 0;
+    while (true) {
+      const { data: chunk } = await _supabase
+        .from('payment')
+        .select('연번, 금액, 납부일자, 입금계좌, 메모, owner:owner_id(이름)')
+        .eq('회차', roundNo)
+        .range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      allPay = allPay.concat(chunk);
+      if (chunk.length < 1000) break;
+      from += 1000;
+    }
+
+    // 납부된 연번 집합
+    const paidYeonbunMap = {};
+    allPay.forEach(p => {
+      if (!paidYeonbunMap[p['연번']]) paidYeonbunMap[p['연번']] = { 금액합계: 0, 납부일자: p['납부일자'], 납부자: p.owner?.이름||'—', 건수: 0 };
+      paidYeonbunMap[p['연번']].금액합계 += (p['금액'] || 0);
+      paidYeonbunMap[p['연번']].건수++;
+    });
+
+    // 활성 연번 전체 로드 (키워드 필터용)
+    let allYeonbun = [], yFrom = 0;
+    while (true) {
+      const { data: chunk } = await _supabase
+        .from('yeonbun').select('연번').eq('is_active', true).range(yFrom, yFrom + 999);
+      if (!chunk || chunk.length === 0) break;
+      allYeonbun = allYeonbun.concat(chunk);
+      if (chunk.length < 1000) break;
+      yFrom += 1000;
+    }
+    const totalYeonbun = allYeonbun.length;
+
+    // 납부 요약
+    const paidCount = Object.keys(paidYeonbunMap).length;
+    const unpaidCount = totalYeonbun - paidCount;
+    const totalAmount = allPay.reduce((s, p) => s + (p['금액'] || 0), 0);
+    const rate = totalYeonbun ? (paidCount / totalYeonbun * 100).toFixed(1) : 0;
+
+    summaryEl.innerHTML = `
+      <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card highlight">
+          <div class="stat-label">납부율</div>
+          <div class="stat-value">${rate}<small style="font-size:16px">%</small></div>
+          <div class="stat-sub">${roundNo}회차 기준</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">납부 완료</div>
+          <div class="stat-value" style="color:var(--green)">${paidCount.toLocaleString()}</div>
+          <div class="stat-sub">연번 기준</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">미납</div>
+          <div class="stat-value" style="color:var(--yellow)">${unpaidCount.toLocaleString()}</div>
+          <div class="stat-sub">연번 기준</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">총 수납액</div>
+          <div class="stat-value" style="font-size:18px;color:var(--accent)">${totalAmount.toLocaleString()}</div>
+          <div class="stat-sub">원</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="height:8px;background:var(--bg3);border-radius:8px;overflow:hidden">
+          <div style="height:100%;width:${rate}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:8px;transition:width 0.6s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:4px">
+          <span>${paidCount.toLocaleString()} / ${totalYeonbun.toLocaleString()} 연번</span>
+          <span style="color:var(--accent);font-weight:700">${rate}%</span>
+        </div>
+      </div>
+    `;
+
+    // 표시할 목록 구성 — 연번+대표소유주 기준
+    // 대표소유주 이름 가져오기 (납부된 연번)
+    const paidYeonbunNums = Object.keys(paidYeonbunMap).map(Number);
+    const repNameMap = {};
+    if (paidYeonbunNums.length > 0) {
+      for (let i = 0; i < paidYeonbunNums.length; i += 500) {
+        const chunk = paidYeonbunNums.slice(i, i + 500);
+        const { data } = await _supabase
+          .from('yeonbun_owner').select('연번, owner:owner_id(이름)')
+          .in('연번', chunk).eq('대표소유주', true);
+        (data||[]).forEach(r => { repNameMap[r['연번']] = r.owner?.이름 || '—'; });
+      }
+    }
+
+    // 키워드 필터
+    let displayRows = [];
+    const isNum = keyword && /^\d+$/.test(keyword);
+
+    if (statusFilter === '납부' || statusFilter === '') {
+      // 납부 완료 행
+      let rows = paidYeonbunNums.map(yn => ({
+        연번: yn,
+        이름: repNameMap[yn] || paidYeonbunMap[yn].납부자 || '—',
+        금액합계: paidYeonbunMap[yn].금액합계,
+        건수: paidYeonbunMap[yn].건수,
+        납부: true
+      }));
+      if (keyword) {
+        if (isNum) rows = rows.filter(r => String(r.연번) === keyword);
+        else rows = rows.filter(r => r.이름.includes(keyword));
+      }
+      displayRows = displayRows.concat(rows);
+    }
+
+    if (statusFilter === '미납' || statusFilter === '') {
+      // 미납 행 — paid에 없는 활성연번
+      const paidSet = new Set(paidYeonbunNums);
+      let unpaidNums = allYeonbun.map(y => y['연번']).filter(yn => !paidSet.has(yn));
+      if (keyword) {
+        if (isNum) {
+          unpaidNums = unpaidNums.filter(yn => String(yn) === keyword);
+        } else {
+          // 이름 검색 시 yeonbun_owner 조회
+          const { data: oList } = await _supabase.from('owner').select('id').ilike('이름', `%${keyword}%`);
+          if (oList && oList.length > 0) {
+            const { data: yoList } = await _supabase.from('yeonbun_owner').select('연번').in('owner_id', oList.map(o=>o.id));
+            const matchSet = new Set((yoList||[]).map(y=>y['연번']));
+            unpaidNums = unpaidNums.filter(yn => matchSet.has(yn));
+          } else { unpaidNums = []; }
+        }
+      }
+      // 미납 대표소유주 이름 (최대 500건)
+      const unpaidSlice = unpaidNums.slice(0, 500);
+      const unpaidNameMap = {};
+      for (let i = 0; i < unpaidSlice.length; i += 500) {
+        const chunk = unpaidSlice.slice(i, i + 500);
+        const { data } = await _supabase
+          .from('yeonbun_owner').select('연번, owner:owner_id(이름)')
+          .in('연번', chunk).eq('대표소유주', true);
+        (data||[]).forEach(r => { unpaidNameMap[r['연번']] = r.owner?.이름||'—'; });
+      }
+      const unpaidRows = unpaidSlice.map(yn => ({
+        연번: yn, 이름: unpaidNameMap[yn]||'—', 금액합계: 0, 건수: 0, 납부: false
+      }));
+      displayRows = displayRows.concat(unpaidRows);
+    }
+
+    // 연번 순 정렬
+    displayRows.sort((a, b) => a.연번 - b.연번);
+
+    countEl.textContent = `표시: ${displayRows.length}건`;
+
+    if (displayRows.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div><p>검색 결과가 없습니다.</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>연번</th><th>대표소유주</th><th>납부여부</th><th>납부금액 합계</th><th>납부건수</th></tr>
+          </thead>
+          <tbody>
+            ${displayRows.map(r => `
+              <tr onclick="openOwnerByYeonbun(${r.연번})">
+                <td class="mono">${r.연번}</td>
+                <td><strong>${r.이름}</strong></td>
+                <td>${r.납부
+                  ? '<span class="badge badge-green">납부완료</span>'
+                  : '<span class="badge badge-yellow">미납</span>'}</td>
+                <td class="mono" style="color:${r.납부?'var(--green)':'var(--text3)'}">
+                  ${r.납부 ? r.금액합계.toLocaleString()+'원' : '—'}
+                </td>
+                <td class="mono">${r.납부 ? r.건수+'건' : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
+  }
+}
+
+// 연번으로 소유주 모달 열기 (납부 탭에서 클릭 시)
+async function openOwnerByYeonbun(yeonbun) {
+  // 해당 연번의 대표소유주 찾기
+  const { data } = await _supabase
+    .from('yeonbun_owner').select('owner_id').eq('연번', yeonbun).eq('대표소유주', true).single();
+  if (data) openOwnerModal(data.owner_id, yeonbun);
 }
 
 // ════════════════════════════════════════════════
