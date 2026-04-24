@@ -1807,7 +1807,13 @@ async function renderOps() {
 
 async function loadOpsPage() {
   const content = document.getElementById('content');
-  const { data: users } = await _supabase.from('app_user').select('*').order('role');
+  const { data: usersRaw } = await _supabase.from('app_user').select('*').order('created_at', { ascending: true });
+  // 위원장 맨 위, 나머지 등록순
+  const users = (usersRaw || []).sort((a, b) => {
+    if (a.role === '위원장') return -1;
+    if (b.role === '위원장') return 1;
+    return 0;
+  });
   const { data: logs } = await _supabase
     .from('app_user_log')
     .select('*, app_user:app_user_id(name, role)')
