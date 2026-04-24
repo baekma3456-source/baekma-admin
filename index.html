@@ -547,73 +547,6 @@
   </div>
 </div>
 
-<!-- ════════════════════ 운영진 추가 안내 모달 ════════════════════ -->
-<div class="modal-overlay" id="add-staff-modal">
-  <div class="modal" style="width:520px">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title">운영진 계정 추가 방법</div>
-        <div class="modal-sub">Supabase 대시보드에서 직접 추가합니다</div>
-      </div>
-      <button class="modal-close" onclick="closeModal('add-staff-modal')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div style="display:grid;gap:16px;">
-
-        <!-- STEP 1 -->
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;margin-bottom:4px">Supabase 대시보드 접속</div>
-            <a href="https://supabase.com/dashboard/project/ldqoglrfvlugryhcmmve/auth/users"
-              target="_blank"
-              style="font-size:12px;color:var(--accent);text-decoration:underline">
-              → Authentication → Users 바로가기
-            </a>
-          </div>
-        </div>
-
-        <!-- STEP 2 -->
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;margin-bottom:4px">Add user → Create new user 클릭</div>
-            <div style="font-size:12px;color:var(--text2)">이메일과 비밀번호 입력 후 <strong>Auto Confirm User 체크</strong> → Create user</div>
-          </div>
-        </div>
-
-        <!-- STEP 3 -->
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;margin-bottom:4px">생성된 계정의 UUID 복사</div>
-            <div style="font-size:12px;color:var(--text2)">Users 목록에서 방금 만든 계정 클릭 → User UID 복사</div>
-          </div>
-        </div>
-
-        <!-- STEP 4 -->
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;margin-bottom:6px">아래 칸에 입력 후 등록</div>
-            <div style="display:grid;gap:8px">
-              <input class="input" id="staff-uid" placeholder="User UID (예: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)" style="width:100%;font-family:var(--mono);font-size:12px">
-              <input class="input" id="staff-name" placeholder="이름 (예: 홍길동)" style="width:100%">
-              <input class="input" id="staff-email" placeholder="이메일 (예: staff01@email.com)" style="width:100%">
-            </div>
-          </div>
-        </div>
-
-        <div id="add-staff-err" style="font-size:12px;color:var(--red);min-height:18px"></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button class="btn btn-ghost" onclick="closeModal('add-staff-modal')">취소</button>
-          <button class="btn btn-blue" id="add-staff-btn" onclick="registerStaff()">✅ 운영진 등록</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ════════════════════ 비밀번호 변경 모달 ════════════════════ -->
 <div class="modal-overlay" id="password-modal">
   <div class="modal" style="width:420px">
@@ -1815,9 +1748,8 @@ async function loadOpsPage() {
     <div class="ops-grid">
       <!-- 운영진 계정 목록 -->
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="margin-bottom:12px">
           <div class="section-title" style="margin-bottom:0">운영진 계정 현황</div>
-          <button class="btn btn-blue btn-sm" onclick="openAddStaffModal()">➕ 운영진 추가</button>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
           <table>
@@ -1843,8 +1775,7 @@ async function loadOpsPage() {
         </div>
         <div style="margin-top:10px;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
           <div style="font-size:11px;color:var(--text3);line-height:1.8">
-            💡 운영진 추가 버튼을 눌러 절차를 따라하시면 됩니다.<br>
-            Supabase에서 계정 생성 후 UID를 복사해서 등록합니다.<br>
+            💡 운영진 추가는 Supabase 대시보드 → Authentication → Users에서 직접 계정을 만든 후 app_user 테이블에 등록하세요.<br>
             비활성화된 계정은 사용자앱 로그인이 차단됩니다.
           </div>
         </div>
@@ -1873,56 +1804,6 @@ async function loadOpsPage() {
       </div>
     </div>
   `;
-}
-
-// ════════════════════════════════════════════════
-// 운영진 계정 관리
-// ════════════════════════════════════════════════
-function openAddStaffModal() {
-  document.getElementById('staff-uid').value = '';
-  document.getElementById('staff-name').value = '';
-  document.getElementById('staff-email').value = '';
-  document.getElementById('add-staff-err').textContent = '';
-  document.getElementById('add-staff-modal').classList.add('open');
-}
-
-async function registerStaff() {
-  const uid   = document.getElementById('staff-uid').value.trim();
-  const name  = document.getElementById('staff-name').value.trim();
-  const email = document.getElementById('staff-email').value.trim();
-  const errEl = document.getElementById('add-staff-err');
-  const btn   = document.getElementById('add-staff-btn');
-
-  errEl.textContent = '';
-  if (!uid)   { errEl.textContent = 'User UID를 입력해주세요.'; return; }
-  if (!name)  { errEl.textContent = '이름을 입력해주세요.'; return; }
-  if (!email) { errEl.textContent = '이메일을 입력해주세요.'; return; }
-
-  btn.textContent = '등록 중...'; btn.disabled = true;
-
-  try {
-    const { error } = await _supabase.from('app_user').insert({
-      auth_uid: uid,
-      username: email,
-      name: name,
-      role: '운영진',
-      is_active: true
-    });
-
-    if (error) {
-      if (error.code === '23505') throw new Error('이미 등록된 UID 또는 이메일입니다.');
-      throw new Error('등록 실패: ' + error.message);
-    }
-
-    showToast(`${name} 운영진이 등록되었습니다.`, 'success');
-    closeModal('add-staff-modal');
-    await loadOpsPage();
-
-  } catch(e) {
-    errEl.textContent = e.message;
-  } finally {
-    btn.textContent = '✅ 운영진 등록'; btn.disabled = false;
-  }
 }
 
 async function toggleStaffActive(userId, name, currentActive) {
