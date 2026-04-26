@@ -714,8 +714,8 @@ async function renderOwners() {
       <div class="filter-row">
         <span class="filter-label">보기 방식</span>
         <div class="view-toggle">
-          <button id="vt-yeonbun" class="on" onclick="setOwnerView('yeonbun')">연번 기준</button>
-          <button id="vt-property" onclick="setOwnerView('property')">부동산ID 기준</button>
+          <button id="vt-property" class="on" onclick="setOwnerView('property')">부동산ID 기준</button>
+          <button id="vt-yeonbun" onclick="setOwnerView('yeonbun')">연번 기준</button>
         </div>
       </div>
       <!-- 검색 -->
@@ -761,7 +761,7 @@ async function renderOwners() {
     <div id="owner-list"><div class="loading-center"><div class="spinner"></div> 불러오는 중...</div></div>
   `;
   document.getElementById('content').innerHTML = html;
-  ownerView = 'yeonbun';
+  ownerView = 'property';
   ownerSearchType = '전체';
   ownerFilters = { danji:'', dong:'', 거주구분:[], consent:{} };
   await doOwnerSearch();
@@ -769,8 +769,8 @@ async function renderOwners() {
 
 function setOwnerView(v) {
   ownerView = v;
-  document.getElementById('vt-yeonbun').classList.toggle('on', v==='yeonbun');
   document.getElementById('vt-property').classList.toggle('on', v==='property');
+  document.getElementById('vt-yeonbun').classList.toggle('on', v==='yeonbun');
   doOwnerSearch();
 }
 
@@ -821,67 +821,100 @@ function resetOwnerSearch() {
   doOwnerSearch();
 }
 
-async function doOwnerSearch() {
+// 전체 검색 결과 보관 (페이지네이션용)
+let ownerAllRows = [];
+let ownerCurrentPage = 1;
+const OWNER_PAGE_SIZE = 50;
+
+async function doOwnerSearch(resetPage = true) {
   const listEl = document.getElementById('owner-list');
   const countEl = document.getElementById('owner-result-count');
   if(!listEl) return;
+  if(resetPage) ownerCurrentPage = 1;
   listEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 검색 중...</div>';
 
   try {
-    const keyword = document.getElementById('owner-search-input').value.trim();
-    // 필터에 따라 쿼리 구성
-    let q = _sb.from('yeonbun_owner')
-      .select(`연번, 부번, 대표소유주, 소유형태,
-        owner:owner_id(id, 이름, 전화번호, 거주구분),
-        property:부동산코드(부동산코드, 단지, 동, 호)`)
-      .order('연번', {ascending:true})
-      .limit(600);
-
-    // 키워드 검색
-    if (keyword) {
-      if (ownerSearchType==='연번' && /^\d+$/.test(keyword)) { q=q.eq('연번',parseInt(keyword)); }
-      else if (ownerSearchType==='부동산ID') { q=q.ilike('부동산코드',`%${keyword}%`); }
-      // 이름/전화번호 검색은 owner 테이블 먼저 조회
-    }
-
-    // 단지 필터
-    if (ownerFilters.danji) {
-      // property join 기준으로 단지 필터 — 직접 하위쿼리 불가, JS 후처리
-    }
+    const keyword = document.getElementById('owner-search-input')?.value.trim() || '';
 
     let rows = [];
-    if (keyword && (ownerSearchType==='이름'||ownerSearchType==='전화번호')) {
-      let ownerQuery = _sb.from('owner').select('id,이름,전화번호,거주구분').limit(200);
-      if (ownerSearchType==='이름') ownerQuery=ownerQuery.ilike('이름',`%${keyword}%`);
-      else ownerQuery=ownerQuery.ilike('전화번호',`%${keyword}%`);
-      const {data:oRows}=await ownerQuery;
-      if(oRows&&oRows.length>0){
-        for(const o of oRows){
-          const {data:yo}=await _sb.from('yeonbun_owner')
-            .select('연번,부번,대표소유주,소유형태,property:부동산코드(부동산코드,단지,동,호)')
-            .eq('owner_id',o.id).limit(20);
-          if(yo) yo.forEach(y=>rows.push({...y,owner:o}));
-        }
+
+    // ── 단지 필터가 있으면 부동산코드 기준으로 먼저 조회 ──
+    if (ownerFilters.danji) {
+      // 1) 해당 단지의 부동산코드 목록 조회
+      let propQ = _sb.from('property').select('부동산코드,단지,동,호,부동산유형');
+      if (ownerFilters.danji === '상가동') {
+        // 상가는 부동산유형으로 필터
+        const SANGGA_TYPES = ['상가동','분산상가','백마상가','설촌상가'];
+        // OR 조건: Supabase에서 in() 사용
+        propQ = _sb.from('property').select('부동산코드,단지,동,호,부동산유형').in('부동산유형', SANGGA_TYPES);
+      } else {
+        propQ = propQ.eq('단지', ownerFilters.danji);
+        if (ownerFilters.dong) propQ = propQ.eq('동', ownerFilters.dong);
+      }
+      // 페이지네이션으로 전체 로드
+      let propCodes = [];
+      let propFrom = 0;
+      while(true) {
+        const {data:chunk} = await propQ.range(propFrom, propFrom+999);
+        if(!chunk||chunk.length===0) break;
+        propCodes = propCodes.concat(chunk.map(p=>p['부동산코드']));
+        if(chunk.length < 1000) break;
+        propFrom += 1000;
+      }
+      if(propCodes.length === 0) {
+        ownerAllRows = [];
+        countEl.textContent = '검색 결과: 0건';
+        renderOwnerTable([]);
+        return;
+      }
+      // 2) 해당 부동산코드의 yeonbun_owner 전체 조회 (500개씩 청크)
+      for(let i=0; i<propCodes.length; i+=500) {
+        const chunk = propCodes.slice(i, i+500);
+        let q = _sb.from('yeonbun_owner')
+          .select('연번,부번,대표소유주,소유형태,owner_id,owner:owner_id(id,이름,전화번호,거주구분),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+          .in('부동산코드', chunk)
+          .order('부동산코드', {ascending:true});
+        const {data} = await q;
+        if(data) rows = rows.concat(data);
       }
     } else {
-      const {data}=await q;
-      rows=data||[];
+      // 단지 미선택 — 키워드 또는 전체 조회
+      if (keyword && (ownerSearchType==='이름'||ownerSearchType==='전화번호')) {
+        let ownerQuery = _sb.from('owner').select('id,이름,전화번호,거주구분').limit(300);
+        if (ownerSearchType==='이름') ownerQuery=ownerQuery.ilike('이름',`%${keyword}%`);
+        else ownerQuery=ownerQuery.ilike('전화번호',`%${keyword}%`);
+        const {data:oRows}=await ownerQuery;
+        if(oRows&&oRows.length>0){
+          for(const o of oRows){
+            const {data:yo}=await _sb.from('yeonbun_owner')
+              .select('연번,부번,대표소유주,소유형태,property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+              .eq('owner_id',o.id);
+            if(yo) yo.forEach(y=>rows.push({...y,owner:o}));
+          }
+        }
+      } else {
+        // 연번/부동산ID 검색 또는 전체
+        let q = _sb.from('yeonbun_owner')
+          .select('연번,부번,대표소유주,소유형태,owner:owner_id(id,이름,전화번호,거주구분),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+          .order('연번',{ascending:true});
+        if (keyword && ownerSearchType==='연번' && /^\d+$/.test(keyword)) {
+          q = q.eq('연번', parseInt(keyword));
+        } else if (keyword && ownerSearchType==='부동산ID') {
+          q = q.ilike('부동산코드', `%${keyword}%`);
+        } else if (!keyword) {
+          q = q.limit(2000); // 전체 조회시 최대 2000건
+        }
+        const {data} = await q;
+        rows = data || [];
+      }
+      // 동 필터 (단지 없이 동만 있는 경우 대비)
+      if (ownerFilters.dong) rows = rows.filter(r=>r.property?.동===ownerFilters.dong);
     }
 
-    // JS 후처리 필터
-    if (ownerFilters.danji) {
-      if (ownerFilters.danji === '상가동') {
-        const SANGGA = ['상가동','분산상가','백마상가','설촌상가'];
-        rows = rows.filter(r => SANGGA.includes(r.property?.부동산유형||'') ||
-          ['3SS','4SS','4DS','5SS','5DS','6SS','BMS','SCS'].some(p=>(r.property?.부동산코드||'').startsWith(p)));
-      } else {
-        rows = rows.filter(r => r.property?.단지 === ownerFilters.danji);
-      }
-    }
-    if (ownerFilters.dong) rows=rows.filter(r=>r.property?.동===ownerFilters.dong);
+    // 거주구분 필터
     if (ownerFilters.거주구분.length) rows=rows.filter(r=>ownerFilters.거주구분.includes(r.owner?.거주구분));
 
-    // 동의서 필터 — 연번별 동의 상태 추가 조회
+    // 동의서 차수 필터
     const consentFilterKeys = Object.keys(ownerFilters.consent).map(Number).filter(n=>ownerFilters.consent[n]);
     if (consentFilterKeys.length > 0) {
       const ynNums=[...new Set(rows.map(r=>r['연번']))];
@@ -900,20 +933,35 @@ async function doOwnerSearch() {
       } else { rows=[]; }
     }
 
-    // 중복 제거 (연번+부동산ID 기준)
+    // 중복 제거
     const seen=new Set(), unique=[];
     rows.forEach(r=>{ const k=`${r['연번']}-${r.property?.부동산코드||''}-${r.owner?.id||''}`; if(!seen.has(k)){seen.add(k);unique.push(r);} });
 
-    countEl.textContent = `검색 결과: ${unique.length}건${unique.length>=600?' (최대 600건)':''}`;
-    renderOwnerTable(unique);
+    ownerAllRows = unique;
+    countEl.textContent = `전체 ${unique.length.toLocaleString()}건`;
+    renderOwnerTablePage();
   } catch(e) {
     listEl.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
+    console.error(e);
   }
 }
 
-async function renderOwnerTable(rows) {
+function renderOwnerTablePage() {
+  const total = ownerAllRows.length;
+  const totalPages = Math.ceil(total / OWNER_PAGE_SIZE);
+  const start = (ownerCurrentPage-1)*OWNER_PAGE_SIZE;
+  const pageRows = ownerAllRows.slice(start, start+OWNER_PAGE_SIZE);
+  const countEl = document.getElementById('owner-result-count');
+  if(countEl) countEl.textContent = `전체 ${total.toLocaleString()}건 (${ownerCurrentPage}/${totalPages||1} 페이지, 페이지당 ${OWNER_PAGE_SIZE}건)`;
+  renderOwnerTable(pageRows, total, totalPages);
+}
+
+async function renderOwnerTable(rows, total, totalPages) {
   const listEl = document.getElementById('owner-list');
-  if(!rows.length){ listEl.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div><p>검색 결과가 없습니다.</p></div>'; return; }
+  if(!rows||!rows.length){
+    listEl.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div><p>검색 결과가 없습니다.</p></div>';
+    return;
+  }
 
   // 연번 목록 수집 → 동의 상태 + 시행방식 일괄 조회
   const ynNums = [...new Set(rows.map(r=>r['연번']))];
@@ -950,20 +998,83 @@ async function renderOwnerTable(rows) {
   yeonbunRows.forEach(y=>{ shihaengMap[y['연번']]=y['시행방식']||'—'; });
   ypCountRows.forEach(y=>{ ynPropCountMap[y['연번']]=(ynPropCountMap[y['연번']]||0)+1; });
 
-  const ROUND_NAMES = {1:'사전',2:'컨설팅',3:'선도',4:'주대단',5:'입안',6:'추진위'};
-
+  // 동의서 셀 — 클릭하면 수정 모달 열기
   function consentCells(yn) {
     const cs = consentMap[yn] || [];
     return [1,2,3,4,5,6].map(n=>{
       const c = cs.find(x=>x['차수']===n);
-      const s = c?.['상태'];
-      if(s==='제출') return `<td style="text-align:center"><span style="color:var(--green);font-size:13px;font-weight:700">○</span></td>`;
-      if(s==='반대') return `<td style="text-align:center"><span style="color:var(--red);font-size:12px">✕</span></td>`;
-      return `<td style="text-align:center;color:var(--text3);font-size:12px">—</td>`;
+      const s = c?.['상태'] || '미제출';
+      let txt, style;
+      if(s==='제출'){txt='○';style='color:var(--green);font-size:13px;font-weight:700';}
+      else if(s==='반대'){txt='✕';style='color:var(--red);font-size:12px;font-weight:600';}
+      else {txt='—';style='color:var(--text3);font-size:12px';}
+      const roundName=['','사전','컨설팅','선도','주대단','입안','추진위'][n];
+      return `<td style="text-align:center;cursor:pointer" title="${n}차 ${roundName} — 클릭하여 수정"
+        onclick="quickConsentEdit(${yn},${n},'${roundName}','${s}','${c?.['접수방법']||''}')">
+        <span style="${style}">${txt}</span>
+      </td>`;
     }).join('');
   }
 
-  if (ownerView === 'yeonbun') {
+  // 페이지네이션 HTML
+  const tp = totalPages||1;
+  const cp = ownerCurrentPage;
+  function pageBtn(p, label) {
+    const isActive = p===cp;
+    return `<button onclick="goOwnerPage(${p})" style="padding:4px 10px;border-radius:5px;border:1px solid ${isActive?'var(--accent)':'var(--border)'};background:${isActive?'var(--accent)':'var(--bg3)'};color:${isActive?'#fff':'var(--text2)'};cursor:pointer;font-size:12px;font-family:var(--font)">${label||p}</button>`;
+  }
+  let pageButtons = '';
+  if(tp>1){
+    pageButtons+=pageBtn(1,'«');
+    pageButtons+=pageBtn(Math.max(1,cp-1),'‹');
+    const start=Math.max(1,cp-2), end=Math.min(tp,cp+2);
+    for(let p=start;p<=end;p++) pageButtons+=pageBtn(p);
+    pageButtons+=pageBtn(Math.min(tp,cp+1),'›');
+    pageButtons+=pageBtn(tp,'»');
+  }
+  const paginationHtml = tp>1 ? `<div style="display:flex;gap:4px;align-items:center;margin-top:12px;flex-wrap:wrap">${pageButtons}</div>` : '';
+
+  if (ownerView === 'property') {
+    // 부동산ID 기준 — 부동산코드로 정렬
+    const sorted = [...rows].sort((a,b)=>{
+      const pa=a.property?.부동산코드||'', pb=b.property?.부동산코드||'';
+      return pa.localeCompare(pb,'ko');
+    });
+    listEl.innerHTML=`
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>부동산ID</th><th>단지</th><th>동/호</th><th>연번</th>
+            <th>소유주</th><th>전화번호</th><th>거주구분</th><th>사업방식</th>
+            <th style="text-align:center">사전</th><th style="text-align:center">컨설팅</th>
+            <th style="text-align:center">선도</th><th style="text-align:center">주대단</th>
+            <th style="text-align:center">입안</th><th style="text-align:center">추진위</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map(r=>`
+            <tr>
+              <td class="mono"><strong>${r.property?.부동산코드||'—'}</strong></td>
+              <td>${r.property?.단지||'—'}</td>
+              <td class="mono">${r.property?.동||''}동 ${r.property?.호||''}호</td>
+              <td class="mono">${r['연번']}</td>
+              <td>
+                <span style="color:var(--accent);cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:rgba(59,111,245,0.3)"
+                  onclick="openOwnerModal('${r.owner?.id}',${r['연번']})">${r.owner?.이름||'—'}</span>
+                ${r['대표소유주']?'<span class="badge badge-blue" style="font-size:10px;margin-left:4px">대표</span>':''}
+                ${(ynPropCountMap[r['연번']]||1)>1?'<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>':''}
+              </td>
+              <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${r.owner?.id||''}')" title="더블클릭 수정">${r.owner?.전화번호||'—'}</span></td>
+              <td><span ondblclick="startInlineEdit(this,'거주구분','${r.owner?.id||''}')" title="더블클릭 수정">${r.owner?.거주구분||'—'}</span></td>
+              <td style="font-size:12px">${shihaengMap[r['연번']]||'—'}</td>
+              ${consentCells(r['연번'])}
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+      ${paginationHtml}
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
+  } else {
+    // 연번 기준
     const ynMap={};
     rows.forEach(r=>{ const yn=r['연번']; if(!ynMap[yn])ynMap[yn]=[]; ynMap[yn].push(r); });
     const ynList=Object.keys(ynMap).map(Number).sort((a,b)=>a-b);
@@ -971,19 +1082,11 @@ async function renderOwnerTable(rows) {
       <div class="table-wrap"><table>
         <thead>
           <tr>
-            <th>연번</th>
-            <th>대표소유주</th>
-            <th>전화번호</th>
-            <th>부동산ID</th>
-            <th>단지</th>
-            <th>거주구분</th>
-            <th>사업방식</th>
-            <th style="text-align:center">사전</th>
-            <th style="text-align:center">컨설팅</th>
-            <th style="text-align:center">선도</th>
-            <th style="text-align:center">주대단</th>
-            <th style="text-align:center">입안</th>
-            <th style="text-align:center">추진위</th>
+            <th>연번</th><th>대표소유주</th><th>전화번호</th>
+            <th>부동산ID</th><th>단지</th><th>거주구분</th><th>사업방식</th>
+            <th style="text-align:center">사전</th><th style="text-align:center">컨설팅</th>
+            <th style="text-align:center">선도</th><th style="text-align:center">주대단</th>
+            <th style="text-align:center">입안</th><th style="text-align:center">추진위</th>
           </tr>
         </thead>
         <tbody>
@@ -993,67 +1096,39 @@ async function renderOwnerTable(rows) {
             const propCodes=[...new Set(rs.map(r=>r.property?.부동산코드).filter(Boolean))];
             const ownerCount=new Set(rs.map(r=>r.owner?.id)).size;
             const isMulti=(ynPropCountMap[yn]||1)>1;
-            const isJoint=ownerCount>1;
             return `<tr>
               <td class="mono"><strong>${yn}</strong></td>
               <td>
-                <span class="owner-name-link" style="color:var(--accent);cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:rgba(59,111,245,0.3)"
-                  onclick="event.stopPropagation();openOwnerModal('${rep?.owner?.id}',${yn})">${rep?.owner?.이름||'—'}</span>
-                ${isJoint?`<span class="badge badge-yellow" style="font-size:10px;margin-left:4px">공동 ${ownerCount}명</span>`:''}
+                <span style="color:var(--accent);cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:rgba(59,111,245,0.3)"
+                  onclick="openOwnerModal('${rep?.owner?.id}',${yn})">${rep?.owner?.이름||'—'}</span>
+                ${ownerCount>1?`<span class="badge badge-yellow" style="font-size:10px;margin-left:4px">공동 ${ownerCount}명</span>`:''}
                 ${isMulti?`<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>`:''}
               </td>
-              <td class="mono">
-                <span ondblclick="startInlineEdit(this,'전화번호','${rep?.owner?.id||''}')" title="더블클릭으로 수정">${rep?.owner?.전화번호||'—'}</span>
-              </td>
+              <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.owner?.전화번호||'—'}</span></td>
               <td class="mono" style="font-size:11px">${propCodes.slice(0,3).join(', ')}${propCodes.length>3?'…':''}</td>
               <td>${rs[0]?.property?.단지||'—'}</td>
-              <td>
-                <span ondblclick="startInlineEdit(this,'거주구분','${rep?.owner?.id||''}')" title="더블클릭으로 수정">${rep?.owner?.거주구분||'—'}</span>
-              </td>
+              <td><span ondblclick="startInlineEdit(this,'거주구분','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.owner?.거주구분||'—'}</span></td>
               <td style="font-size:12px">${shihaengMap[yn]||'—'}</td>
               ${consentCells(yn)}
             </tr>`;
           }).join('')}
         </tbody>
       </table></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">💡 이름 클릭 → 상세보기 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭 → 수정</div>`;
-  } else {
-    listEl.innerHTML=`
-      <div class="table-wrap"><table>
-        <thead>
-          <tr>
-            <th>부동산ID</th><th>단지</th><th>동/호</th><th>연번</th>
-            <th>소유주</th><th>전화번호</th><th>거주구분</th>
-            <th style="text-align:center">사전</th><th style="text-align:center">컨설팅</th>
-            <th style="text-align:center">선도</th><th style="text-align:center">주대단</th>
-            <th style="text-align:center">입안</th><th style="text-align:center">추진위</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.sort((a,b)=>{ const pc=(a.property?.부동산코드||'').localeCompare(b.property?.부동산코드||'','ko'); return pc||a['연번']-b['연번']; }).map(r=>`
-            <tr>
-              <td class="mono"><strong>${r.property?.부동산코드||'—'}</strong></td>
-              <td>${r.property?.단지||'—'}</td>
-              <td class="mono">${r.property?.동||''}동 ${r.property?.호||''}호</td>
-              <td class="mono">${r['연번']}</td>
-              <td>
-                <span class="owner-name-link" style="color:var(--accent);cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:rgba(59,111,245,0.3)"
-                  onclick="event.stopPropagation();openOwnerModal('${r.owner?.id}',${r['연번']})">${r.owner?.이름||'—'}</span>
-                ${r['대표소유주']?'<span class="badge badge-blue" style="font-size:10px;margin-left:4px">대표</span>':''}
-                ${(ynPropCountMap[r['연번']]||1)>1?'<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>':''}
-              </td>
-              <td class="mono">
-                <span ondblclick="startInlineEdit(this,'전화번호','${r.owner?.id||''}')" title="더블클릭으로 수정">${r.owner?.전화번호||'—'}</span>
-              </td>
-              <td>
-                <span ondblclick="startInlineEdit(this,'거주구분','${r.owner?.id||''}')" title="더블클릭으로 수정">${r.owner?.거주구분||'—'}</span>
-              </td>
-              ${consentCells(r['연번'])}
-            </tr>`).join('')}
-        </tbody>
-      </table></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">💡 이름 클릭 → 상세보기 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭 → 수정</div>`;
+      ${paginationHtml}
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
   }
+}
+
+function goOwnerPage(p) {
+  const total = ownerAllRows.length;
+  const totalPages = Math.ceil(total/OWNER_PAGE_SIZE);
+  ownerCurrentPage = Math.max(1, Math.min(p, totalPages));
+  renderOwnerTablePage();
+}
+
+// 동의서 빠른 수정 (명부 테이블에서 직접 클릭)
+function quickConsentEdit(yeonbun, round, roundName, status, method) {
+  openConsentEdit(yeonbun, round, roundName, status, method);
 }
 
 // 인라인 수정 — 더블클릭 시 input으로 전환
@@ -1262,7 +1337,13 @@ async function saveConsentEdit(){
   if(error){showToast('저장 실패: '+error.message,'error');return;}
   closeModal('consent-edit-modal');
   showToast('동의 상태가 저장되었습니다.','success');
-  await loadOwnerConsentTab(yeonbun,document.getElementById('modal-body'));
+  const ownerModal=document.getElementById('owner-modal');
+  if(ownerModal.classList.contains('open')){
+    await loadOwnerConsentTab(yeonbun,document.getElementById('modal-body'));
+  } else if(ownerAllRows.length>0){
+    // 명부 테이블에서 직접 수정한 경우 → 페이지 재렌더
+    renderOwnerTablePage();
+  }
 }
 
 async function openOwnerByYeonbun(yeonbun){
@@ -1608,11 +1689,13 @@ async function printAllReceipts() {
     return pa.localeCompare(pb,'ko');
   });
 
-  // 고유번호 생성: 000-YYYYMMDD-부동산코드
+  // 고유번호: 회차3자리-YYYYMMDD-부동산코드
   function makeUID(yn){
     const pid=ynPidMap[yn]||yn;
     const d=ynMap[yn].납부일자.replace(/-/g,'').replace(/\./g,'').replace(/[년월일 ]/g,'').slice(0,8);
-    return `000-${d||today.toISOString().slice(0,10).replace(/-/g,'')}-${pid}`;
+    const dateStr = d||today.toISOString().slice(0,10).replace(/-/g,'');
+    const roundPrefix = String(roundNo).padStart(3,'0');
+    return `${roundPrefix}-${dateStr}-${pid}`;
   }
 
   function receiptBlock(yn, label) {
@@ -1621,13 +1704,11 @@ async function printAllReceipts() {
     const addr=pidAddrMap[pid];
     const dongho=addr?`${addr.dong}동 ${addr.ho}호`:(pid||'—');
     const pd=d.납부일자||'—';
-    // 납부일자 포맷 변환
     let pdFmt=pd;
     const pm=pd.match(/(\d{4})-(\d{2})-(\d{2})/);
     if(pm) pdFmt=`${pm[1]}년 ${pm[2]}월 ${pm[3]}일`;
     const cum=cumMap[yn]||d.금액;
-    return `<div class="receipt-half">
-      <table class="r-table">
+    return `<table class="r-table">
         <tr><th colspan="2" class="r-title">운 영 경 비 납 부 영 수 증<br><span class="r-label-tag">${label}</span></th></tr>
         <tr><td class="r-key">고 유 번 호</td><td class="r-val r-mono">${makeUID(yn)}</td></tr>
         <tr><td class="r-key">소 유 주</td><td class="r-val r-bold">${d.소유주}</td></tr>
@@ -1638,36 +1719,31 @@ async function printAllReceipts() {
         <tr class="r-highlight"><td class="r-key">누 적 납 부 총 액</td><td class="r-val r-big">${cum.toLocaleString()} 원</td></tr>
         <tr><td class="r-key">발 행 일</td><td class="r-val r-bold">${issueDate}</td></tr>
         <tr><td colspan="2" class="r-footer">백마마을3456단지 통합재건축 주민대표단 (인)</td></tr>
-      </table>
-    </div>`;
+      </table>`;
   }
 
   const printHtml=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>운영경비 영수증</title>
   <style>
-    @page{size:A4;margin:8mm}
+    @page{size:A4 portrait;margin:10mm}
     body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;margin:0;padding:0}
-    .receipt-row{display:flex;gap:6mm;margin-bottom:4mm;page-break-inside:avoid}
-    .receipt-half{flex:1;border:1.5px solid #333;padding:0}
-    .r-table{width:100%;border-collapse:collapse;font-size:11pt}
-    .r-table tr td,.r-table tr th{border:none;border-bottom:0.5px solid #bbb;padding:5px 8px}
-    .r-title{text-align:center;font-size:13pt;font-weight:700;letter-spacing:3px;padding:10px 8px 6px;border-bottom:1.5px solid #333;line-height:1.5}
-    .r-label-tag{display:inline-block;border:1px solid #555;font-size:9pt;padding:1px 8px;letter-spacing:1px;font-weight:400;margin-top:4px}
-    .r-key{width:38%;font-size:10.5pt;letter-spacing:1px;color:#333;white-space:nowrap}
-    .r-val{font-size:10.5pt;padding-left:4px}
+    .receipt-page{width:100%;page-break-after:always;display:flex;flex-direction:column;justify-content:center;min-height:257mm;box-sizing:border-box;padding:8mm 0}
+    .receipt-page:last-child{page-break-after:auto}
+    .receipt-box{border:1.5px solid #333;width:100%}
+    .r-table{width:100%;border-collapse:collapse;font-size:12pt}
+    .r-table tr td,.r-table tr th{border:none;border-bottom:0.5px solid #bbb;padding:7px 10px}
+    .r-title{text-align:center;font-size:15pt;font-weight:700;letter-spacing:4px;padding:14px 10px 8px;border-bottom:2px solid #333;line-height:1.6}
+    .r-label-tag{display:inline-block;border:1px solid #555;font-size:10pt;padding:2px 10px;letter-spacing:1px;font-weight:400;margin-top:4px}
+    .r-key{width:35%;font-size:11pt;letter-spacing:1px;color:#333;white-space:nowrap;padding-left:14px}
+    .r-val{font-size:11pt;padding-left:6px}
     .r-bold{font-weight:600}
-    .r-mono{font-family:monospace;font-size:9.5pt}
+    .r-mono{font-family:monospace;font-size:10pt}
     .r-highlight td{background:#f0f0f0}
-    .r-big{font-size:13pt;font-weight:700}
-    .r-footer{text-align:center;font-size:10pt;padding:8px;border-top:1.5px solid #333;border-bottom:none}
-    .dashed-sep{width:1px;border-left:1.5px dashed #999;margin:0 2mm}
-    @media print{.receipt-row{page-break-inside:avoid}}
+    .r-big{font-size:16pt;font-weight:700}
+    .r-footer{text-align:center;font-size:11pt;padding:12px;border-top:2px solid #333;border-bottom:none;font-weight:500}
   </style></head><body>
-  ${sorted.map((yn,i)=>{
-    const isLast=(i===sorted.length-1);
-    return `<div class="receipt-row">
-      ${receiptBlock(yn,'주민대표단 보관용')}
-      <div class="dashed-sep"></div>
-      ${receiptBlock(yn,'소유주 보관용')}
+  ${sorted.map((yn)=>{
+    return `<div class="receipt-page">
+      <div class="receipt-box">${receiptBlock(yn,'소유주 보관용')}</div>
     </div>`;
   }).join('')}
   </body></html>`;
@@ -1926,12 +2002,22 @@ async function handleRosterImport(event) {
       등기원인일: String(r[11]||'').trim(),
     })).filter(r=>r.연번>0);
 
-    resultEl.innerHTML='<div class="loading-center"><div class="spinner"></div> DB와 비교 중...</div>';
+    resultEl.innerHTML='<div class="loading-center"><div class="spinner"></div> DB와 비교 중 (데이터 로드)...</div>';
 
-    // DB에서 전체 yeonbun_owner 로드 (연번, 부번, 부동산코드, 소유주 정보 포함)
-    const dbRows=await fetchAll('yeonbun_owner',
-      `연번,부번,부동산코드,소유형태,등기유형,등기원인일,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)`,
-      []);
+    // DB에서 yeonbun_owner 전체 로드 — join 포함 직접 페이지네이션
+    const dbRows = [];
+    let dbFrom = 0;
+    while(true) {
+      const {data:chunk, error} = await _sb
+        .from('yeonbun_owner')
+        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
+        .range(dbFrom, dbFrom+999);
+      if(error||!chunk||chunk.length===0) break;
+      dbRows.push(...chunk);
+      if(chunk.length < 1000) break;
+      dbFrom += 1000;
+    }
+    resultEl.innerHTML=`<div class="loading-center"><div class="spinner"></div> DB와 비교 중 (${dbRows.length}건 로드됨)...</div>`;
 
     // === 1. 소유주 변경 감지 (연번+부동산코드는 같은데 이름이 다른 경우) ===
     // DB 맵: key = "연번-부동산코드-부번"
