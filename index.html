@@ -2083,27 +2083,71 @@ async function handleRosterImport(event) {
   resultEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 엑셀 분석 중...</div>';
 
   try {
+    // ── 동/호 → 부동산ID 변환 함수 ──
+    // 엑셀의 동(棟) 값과 호수로 DB의 부동산코드 형식을 만들어냄
+    function makePropId(dong, ho) {
+      if(!dong || !ho) return null;
+      const d = String(dong).trim();
+      const h = String(ho).trim();
+
+      // 호수 4자리 패딩 (숫자인 경우만, B12 같은 건 그대로)
+      function padHo(h) {
+        return /^\d+$/.test(h) ? h.padStart(4, '0') : h;
+      }
+
+      // 아파트 — 동이 숫자
+      if (/^\d+$/.test(d)) return `${d}-${padHo(h)}`;
+
+      // 상가 매핑
+      const sangMap = {
+        '3단지 상가':    '3SS',
+        '4단지 상가':    '4SS',
+        '4단지 분산상가':'4DS',
+        '5단지 상가':    '5SS',
+        '5단지 분상상가':'5DS', // 엑셀 오타('분상상가') 포함
+        '5단지 분산상가':'5DS',
+        '6단지 상가':    '6SS',
+        '백마상가':      'BMS',
+        '설촌상가':      'SCS',
+      };
+      const prefix = sangMap[d];
+      if(prefix) return `${prefix}-${padHo(h)}`;
+
+      // 매핑 안 되면 동-호 그대로
+      return `${d}-${h}`;
+    }
+
     // ── STEP 1: 엑셀 파싱 ──
+    // 실제 컬럼 순서:
+    // 0:연번 1:부번 2:소유지번 3:동 4:호 5:이름 6:메모 7:등기유형
+    // 8:얼마집인증 9:얼마집인증일 10:소유형태 11:대표자 12:생년월일
+    // 13:등기상주소 14:실거주지 15:거주구분 16:대지크기 17:지분별토지
+    // 18:건축면적 19:전유면적 20:등기원인일 21:등기고유번호
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab, {type:'array'});
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rawData = XLSX.utils.sheet_to_json(ws, {header:1});
     const excelRows = rawData.slice(1)
       .filter(r => r.length > 0 && r[0])
-      .map(r => ({
-        연번:      parseInt(r[0]) || 0,
-        부번:      parseInt(r[1]) || 1,
-        부동산ID:  String(r[2]||'').trim(),
-        동:        String(r[3]||'').trim(),
-        호:        String(r[4]||'').trim(),
-        이름:      String(r[5]||'').trim(),
-        생년월일:  String(r[6]||'').trim(),
-        성별:      String(r[7]||'').trim(),
-        전화번호:  String(r[8]||'').trim(),
-        소유형태:  String(r[9]||'').trim(),
-        등기유형:  String(r[10]||'').trim(),
-        등기원인일:String(r[11]||'').trim(),
-      }))
+      .map(r => {
+        const dong = String(r[3]||'').trim();
+        const ho   = String(r[4]||'').trim();
+        return {
+          연번:       parseInt(r[0]) || 0,
+          부번:       parseInt(r[1]) || 1,
+          부동산ID:   makePropId(dong, ho),
+          동:         dong,
+          호:         ho,
+          이름:       String(r[5]||'').trim(),
+          생년월일:   String(r[12]||'').trim(),
+          성별:       '',   // 엑셀에 성별 컬럼 없음
+          전화번호:   '',   // 엑셀에 전화번호 컬럼 없음
+          소유형태:   String(r[10]||'').trim(),
+          등기유형:   String(r[7]||'').trim(),
+          등기원인일: String(r[20]||'').trim(),
+          거주구분:   String(r[15]||'').trim(),
+        };
+      })
       .filter(r => r.연번 > 0 && r.부동산ID);
 
     if(!excelRows.length) {
@@ -2283,7 +2327,7 @@ async function handleRosterImport(event) {
                 const exSummary = `${c.excel.이름} / ${c.excel.생년월일||'—'} / 연번${c.excel.연번}`;
                 return `<tr id="chg-row-${i}">
                   <td style="text-align:center"><input type="checkbox" class="chg-chk" data-idx="${i}"></td>
-                  <td class="mono"><strong>${c.부동산ID}</strong></td>
+                  <td class="mono"><strong>${c.부동산ID}</strong><br><span style="font-size:10px;color:var(--text3)">${c.excel.동||''}동 ${c.excel.호||''}호</span></td>
                   <td class="mono">${c.부번}</td>
                   <td>${typeBadge}</td>
                   <td style="font-size:11px;color:var(--text2)">${dbSummary}</td>
