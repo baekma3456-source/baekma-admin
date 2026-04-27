@@ -1989,17 +1989,23 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- 소유주명부 비교/교체 -->
+      <!-- 소유주명부 업데이트 v2 — 등기고유번호 기준 7케이스 -->
       <div class="card" style="grid-column:1/-1">
         <div class="card-title">소유주명부 업데이트</div>
         <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.8">
-          새로운 소유주명부 엑셀을 임포트합니다. <strong>부동산ID 기준</strong>으로 비교하여 연번·소유주이름·생년월일 중 하나라도 다르면 변경 목록에 표시합니다.<br>
-          <strong>컬럼 순서 (1행=헤더):</strong> <code style="background:var(--bg3);padding:2px 8px;border-radius:4px">연번 | 부번 | 부동산ID | 동 | 호 | 이름 | 생년월일 | 성별 | 전화번호 | 소유형태 | 등기유형 | 등기원인일</code>
+          얼마집에서 다운로드한 최신 소유주명부 엑셀을 업로드합니다.<br>
+          <strong>매칭 기준:</strong> 등기고유번호 → property 테이블 → 부동산코드 확보 → 소유구성 비교<br>
+          소유 구성 변경(단독↔공동, 소유주 교체 등) 7가지 케이스를 자동 감지하여 탭별로 분류합니다.
         </div>
-        <div style="padding:10px 14px;background:var(--accent-soft);border-radius:8px;border:1px solid var(--accent);font-size:12px;color:var(--accent);margin-bottom:14px">
-          ℹ️ <strong>교체 시 동작:</strong> 기존 소유주 기록은 <code>is_current=false</code>로 보존되고, 변경 이력이 <code>owner_change_log</code>에 기록됩니다.<br>
-          이 기능을 사용하기 전에 Supabase SQL Editor에서 아래 SQL을 먼저 실행해야 합니다.<br>
-          <button class="btn btn-sm" style="margin-top:6px;background:var(--accent);color:#fff" onclick="showSqlGuide()">📋 사전 SQL 보기</button>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;padding:12px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text2)">
+          <div>🔵 <strong>①</strong> 데이터 업데이트</div>
+          <div>🔴 <strong>②</strong> 단독→단독 교체</div>
+          <div>🟠 <strong>③</strong> 단독→공동(기존포함)</div>
+          <div>🔴 <strong>④</strong> 단독→공동(완전교체)</div>
+          <div>🔴 <strong>⑤</strong> 공동→단독</div>
+          <div>🟠 <strong>⑥</strong> 공동 일부 교체</div>
+          <div>🔴 <strong>⑦</strong> 공동→공동 완전교체</div>
+          <div>⚠️ 신규/누락</div>
         </div>
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
           <label style="cursor:pointer">
@@ -2007,11 +2013,13 @@ async function renderSettings() {
             <input type="file" accept=".xlsx,.xls" id="roster-file-input" style="display:none" onchange="handleRosterImport(event)">
           </label>
           <span id="roster-file-name" style="font-size:12px;color:var(--text3)">파일을 선택해주세요</span>
+          <span id="roster-progress" style="font-size:12px;color:var(--accent);display:none"></span>
         </div>
         <div id="roster-compare-result"></div>
       </div>
-    </div>`;
+    </div>\`;
 }
+
 
 async function saveSettingsPassword() {
   const nw=document.getElementById('settings-pw-new').value;
@@ -2037,542 +2045,393 @@ function openAddStaffGuide() {
   showToast('Supabase → Authentication → Users → Add user 에서 추가하세요.','info');
 }
 
-// ── SQL 사전 안내 팝업 ──
-function showSqlGuide() {
-  const sql = `-- ✅ DB v2.0 마이그레이션 완료 (2026-04-27)
--- yeonbun_owner + yeonbun_property → registration 통합 완료
--- 아래 SQL은 참고용입니다. 이미 적용되었습니다.
+// ════════════════════════════════════════════════
+// 소유주명부 업데이트 v2 — 등기고유번호 기준 7케이스
+// ════════════════════════════════════════════════
 
--- registration 테이블 (신규, v2.0)
--- 연번 × 부동산코드 × owner_id 의 3자 조합
--- is_current, 소유종료일, 등기상주소, 거주구분 포함
-
--- ② 소유주 변경 이력 테이블 생성
-CREATE TABLE IF NOT EXISTS owner_change_log (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  부동산코드    TEXT NOT NULL,
-  연번_전       INTEGER,
-  연번_후       INTEGER,
-  owner_id_전   UUID,
-  owner_id_후   UUID,
-  이름_전       TEXT,
-  이름_후       TEXT,
-  생년월일_전   TEXT,
-  생년월일_후   TEXT,
-  소유종료일    DATE,
-  변경사유      TEXT DEFAULT '소유주명부 교체',
-  처리자        TEXT,
-  created_at    TIMESTAMPTZ DEFAULT now()
-);
-
--- ③ payment 테이블에 이전 소유주 납부 표시 컬럼 추가
---    소유주 교체 시 기존 납부 기록에 is_previous_owner=true 를 표시해서
---    화면에서 "이전 소유주 납부" 로 구분 표시함 (금액은 그대로 유지)
-ALTER TABLE payment
-  ADD COLUMN IF NOT EXISTS is_previous_owner BOOLEAN DEFAULT false;`;
-  const w = window.open('', '_blank', 'width=700,height=500');
-  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
-  <title>사전 SQL</title>
-  <style>body{font-family:monospace;padding:24px;background:#1e1e2e;color:#cdd6f4}
-  h2{font-family:sans-serif;color:#89b4fa;margin-bottom:16px}
-  pre{background:#181825;border:1px solid #313244;border-radius:8px;padding:16px;white-space:pre-wrap;font-size:13px;line-height:1.7}
-  .copy-btn{margin-top:12px;padding:8px 20px;background:#89b4fa;border:none;border-radius:6px;color:#1e1e2e;font-weight:700;cursor:pointer;font-size:13px}</style>
-  </head><body>
-  <h2>📋 Supabase SQL Editor에서 먼저 실행하세요</h2>
-  <pre id="sql-code">${sql.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
-  <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('sql-code').textContent).then(()=>alert('복사되었습니다!'))">복사</button>
-  </body></html>`);
-  w.document.close();
+function parseExcelRows(rawData) {
+  return rawData.slice(1)
+    .filter(r => r.length > 0 && r[0])
+    .map(r => ({
+      연번:         parseInt(r[0]) || 0,
+      부번:         parseInt(r[1]) || 1,
+      이름:         String(r[5]  || '').trim(),
+      생년월일:     String(r[12] || '').trim(),
+      성별:         String(r[11] || '').trim(),
+      전화번호:     '',
+      소유형태:     String(r[10] || '').trim(),
+      등기유형:     String(r[7]  || '').trim(),
+      등기원인일:   String(r[20] || '').trim(),
+      거주구분:     String(r[15] || '').trim(),
+      등기상주소:   String(r[13] || '').trim(),
+      지분별토지:   parseFloat(r[17]) || null,
+      등기고유번호: String(r[21] || '').trim(),
+      동:           String(r[3]  || '').trim(),
+      호:           String(r[4]  || '').trim(),
+    }))
+    .filter(r => r.연번 > 0 && r.등기고유번호);
 }
 
-// ── 핵심 비교/교체 로직 ──
+function classifyChanges(dbByProp, exByProp) {
+  const results = {
+    dataUpdate:[], ownerReplace:[], soloToJointKeep:[], soloToJointNew:[],
+    jointToSolo:[], jointPartial:[], jointToJoint:[],
+    newProperty:[], missingInExcel:[],
+  };
+  for(const [uid, exRows] of Object.entries(exByProp)) {
+    if(!dbByProp[uid]) results.newProperty.push(...exRows);
+  }
+  for(const [uid, dbRows] of Object.entries(dbByProp)) {
+    if(!exByProp[uid]) results.missingInExcel.push(...dbRows);
+  }
+  for(const uid of Object.keys(dbByProp)) {
+    if(!exByProp[uid]) continue;
+    const dbs = dbByProp[uid];
+    const exs = exByProp[uid];
+    const dbKeys = new Set(dbs.map(r => `${r.owner?.이름}|${r.owner?.생년월일_사업자번호}`));
+    const exKeys = new Set(exs.map(r => `${r.이름}|${r.생년월일}`));
+    const dbSize = dbs.length, exSize = exs.length;
+    const sameOwners = dbSize === exSize &&
+      [...exKeys].every(k => dbKeys.has(k)) && [...dbKeys].every(k => exKeys.has(k));
+
+    if(sameOwners) {
+      const diffs = [];
+      exs.forEach(ex => {
+        const dbRow = dbs.find(d => d.owner?.이름 === ex.이름 && d.owner?.생년월일_사업자번호 === ex.생년월일);
+        if(!dbRow) return;
+        const rowDiffs = [];
+        if(dbRow['연번'] !== ex.연번) rowDiffs.push({field:'연번', db:dbRow['연번'], excel:ex.연번});
+        if((dbRow['소유형태']||'') !== ex.소유형태 && ex.소유형태) rowDiffs.push({field:'소유형태', db:dbRow['소유형태']||'—', excel:ex.소유형태});
+        if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
+        if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
+        if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
+      });
+      if(diffs.length) results.dataUpdate.push({ 등기고유번호:uid, dbs, exs, diffs });
+      continue;
+    }
+    const dbSolo = dbSize === 1, exSolo = exSize === 1;
+    const exOwnerKeys = [...exKeys];
+    const commonKeys = exOwnerKeys.filter(k => dbKeys.has(k));
+    const entry = { 등기고유번호:uid, dbs, exs };
+    if(dbSolo && exSolo)          results.ownerReplace.push(entry);
+    else if(dbSolo && !exSolo)    (commonKeys.length > 0 ? results.soloToJointKeep : results.soloToJointNew).push(entry);
+    else if(!dbSolo && exSolo)    results.jointToSolo.push(entry);
+    else                          (commonKeys.length === 0 ? results.jointToJoint : results.jointPartial).push(entry);
+  }
+  return results;
+}
+
 async function handleRosterImport(event) {
   const file = event.target.files[0]; if(!file) return;
   document.getElementById('roster-file-name').textContent = file.name;
   const resultEl = document.getElementById('roster-compare-result');
-  resultEl.innerHTML = '<div class="loading-center"><div class="spinner"></div> 엑셀 분석 중...</div>';
-
+  const progEl   = document.getElementById('roster-progress');
+  progEl.style.display = '';
+  const setP = msg => { progEl.textContent = msg; };
+  resultEl.innerHTML = '';
   try {
-    // ── 동/호 → 부동산ID 변환 함수 ──
-    // 엑셀의 동(棟) 값과 호수로 DB의 부동산코드 형식을 만들어냄
-    function makePropId(dong, ho) {
-      if(!dong || !ho) return null;
-      const d = String(dong).trim();
-      const h = String(ho).trim();
-
-      // 호수 4자리 패딩 (숫자인 경우만, B12 같은 건 그대로)
-      function padHo(h) {
-        return /^\d+$/.test(h) ? h.padStart(4, '0') : h;
-      }
-
-      // 아파트 — 동이 숫자
-      if (/^\d+$/.test(d)) return `${d}-${padHo(h)}`;
-
-      // 상가 매핑
-      const sangMap = {
-        '3단지 상가':    '3SS',
-        '4단지 상가':    '4SS',
-        '4단지 분산상가':'4DS',
-        '5단지 상가':    '5SS',
-        '5단지 분상상가':'5DS', // 엑셀 오타('분상상가') 포함
-        '5단지 분산상가':'5DS',
-        '6단지 상가':    '6SS',
-        '백마상가':      'BMS',
-        '설촌상가':      'SCS',
-      };
-      const prefix = sangMap[d];
-      if(prefix) return `${prefix}-${padHo(h)}`;
-
-      // 매핑 안 되면 동-호 그대로
-      return `${d}-${h}`;
-    }
-
-    // ── STEP 1: 엑셀 파싱 ──
-    // 실제 컬럼 순서:
-    // 0:연번 1:부번 2:소유지번 3:동 4:호 5:이름 6:메모 7:등기유형
-    // 8:얼마집인증 9:얼마집인증일 10:소유형태 11:대표자 12:생년월일
-    // 13:등기상주소 14:실거주지 15:거주구분 16:대지크기 17:지분별토지
-    // 18:건축면적 19:전유면적 20:등기원인일 21:등기고유번호
+    setP('엑셀 파싱 중...');
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab, {type:'array'});
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rawData = XLSX.utils.sheet_to_json(ws, {header:1});
-    const excelRows = rawData.slice(1)
-      .filter(r => r.length > 0 && r[0])
-      .map(r => {
-        const dong = String(r[3]||'').trim();
-        const ho   = String(r[4]||'').trim();
-        return {
-          연번:       parseInt(r[0]) || 0,
-          부번:       parseInt(r[1]) || 1,
-          부동산ID:   makePropId(dong, ho),
-          동:         dong,
-          호:         ho,
-          이름:       String(r[5]||'').trim(),
-          생년월일:   String(r[12]||'').trim(),
-          성별:       '',   // 엑셀에 성별 컬럼 없음
-          전화번호:   '',   // 엑셀에 전화번호 컬럼 없음
-          소유형태:   String(r[10]||'').trim(),
-          등기유형:   String(r[7]||'').trim(),
-          등기원인일: String(r[20]||'').trim(),
-          거주구분:   String(r[15]||'').trim(),
-        };
-      })
-      .filter(r => r.연번 > 0 && r.부동산ID);
-
+    const excelRows = parseExcelRows(rawData);
     if(!excelRows.length) {
-      resultEl.innerHTML = '<div class="empty-state"><p>엑셀에서 유효한 데이터를 찾지 못했습니다.</p></div>';
-      return;
+      resultEl.innerHTML = '<div class="empty-state"><p>유효한 데이터가 없습니다. (등기고유번호 22번째 컬럼 확인)</p></div>';
+      progEl.style.display='none'; return;
     }
 
-    // ── STEP 2: DB 전체 로드 ──
-    resultEl.innerHTML = `<div class="loading-center"><div class="spinner"></div> DB 로드 중 (엑셀 ${excelRows.length}건)...</div>`;
+    setP(`엑셀 ${excelRows.length}건 — 부동산 매칭 중...`);
+    const allUids = [...new Set(excelRows.map(r => r.등기고유번호).filter(Boolean))];
+    const propMap = {};
+    for(let i=0; i<allUids.length; i+=500) {
+      const {data:props} = await _sb.from('property').select('부동산코드,등기고유번호').in('등기고유번호', allUids.slice(i,i+500));
+      (props||[]).forEach(p => { propMap[p.등기고유번호] = p.부동산코드; });
+    }
+    const unmatchedExcel = [];
+    excelRows.forEach(r => { r.부동산코드 = propMap[r.등기고유번호]||null; if(!r.부동산코드) unmatchedExcel.push(r); });
+    const matchedExcel = excelRows.filter(r => r.부동산코드);
 
+    setP('DB 로드 중...');
+    const allPropCodes = [...new Set(matchedExcel.map(r => r.부동산코드))];
     const dbRows = [];
-    let dbFrom = 0;
-    while(true) {
-      const {data:chunk, error} = await _sb
-        .from('registration')
-        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
-        .eq('is_current', true)   // 현재 소유주만 비교 (is_current 컬럼 없으면 전체)
-        .range(dbFrom, dbFrom+999);
-      if(!chunk || chunk.length===0) break;
-      dbRows.push(...chunk);
-      if(chunk.length < 1000) break;
-      dbFrom += 1000;
+    for(let i=0; i<allPropCodes.length; i+=500) {
+      const {data:chunk} = await _sb.from('registration')
+        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,거주구분,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
+        .in('부동산코드', allPropCodes.slice(i,i+500)).eq('is_current', true);
+      if(chunk) dbRows.push(...chunk);
     }
 
-    // is_current 컬럼이 없을 수도 있으므로 fallback: 전체 재로드
-    if(dbRows.length === 0) {
-      dbFrom = 0;
-      while(true) {
-        const {data:chunk} = await _sb
-          .from('registration')
-          .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
-          .range(dbFrom, dbFrom+999);
-        if(!chunk || chunk.length===0) break;
-        dbRows.push(...chunk);
-        if(chunk.length < 1000) break;
-        dbFrom += 1000;
-      }
-    }
+    setP('소유 구성 비교 중...');
+    const dbByCode = {};
+    dbRows.forEach(r => { const c=r['부동산코드']; if(!dbByCode[c]) dbByCode[c]=[]; dbByCode[c].push(r); });
+    const codeToUid = {};
+    Object.entries(propMap).forEach(([uid,code]) => { codeToUid[code]=uid; });
+    const dbByProp = {};
+    Object.entries(dbByCode).forEach(([code,rows]) => { const uid=codeToUid[code]; if(uid) dbByProp[uid]=rows; });
+    const exByProp = {};
+    matchedExcel.forEach(r => { if(!exByProp[r.등기고유번호]) exByProp[r.등기고유번호]=[]; exByProp[r.등기고유번호].push(r); });
 
-    resultEl.innerHTML = `<div class="loading-center"><div class="spinner"></div> 비교 중 (DB ${dbRows.length}건 로드됨)...</div>`;
+    const classified = classifyChanges(dbByProp, exByProp);
+    classified.newProperty = [...(classified.newProperty||[]), ...unmatchedExcel];
+    window._rosterClassified = classified;
 
-    // ── STEP 3: 비교 — 부동산ID 기준 ──
-    // DB 맵: key = "부동산ID-부번"  (한 부동산에 공동소유자 여러 명 → 부번 포함)
-    const dbMap = {};
-    dbRows.forEach(r => {
-      const k = `${r['부동산코드']}-${r['부번']}`;
-      dbMap[k] = r;
-    });
-
-    // 엑셀 맵: key = "부동산ID-부번"
-    const excelMap = {};
-    excelRows.forEach(r => {
-      const k = `${r.부동산ID}-${r.부번}`;
-      excelMap[k] = r;
-    });
-
-    const changed = [];    // 부동산ID 일치, 연번/이름/생년월일 중 하나 이상 다름
-    const onlyExcel = [];  // 엑셀에만 있음 (DB에 없는 부동산ID-부번)
-    const onlyDB = [];     // DB에만 있음 (엑셀에 없는 부동산ID-부번)
-
-    // 엑셀 → DB 비교
-    excelRows.forEach(er => {
-      const k = `${er.부동산ID}-${er.부번}`;
-      const db = dbMap[k];
-      if(!db) { onlyExcel.push(er); return; }
-
-      const diffs = [];
-      // 핵심 3개 비교
-      const dbYeonbun  = db['연번'];
-      const dbName     = (db.owner?.이름||'').trim();
-      const dbBirth    = (db.owner?.생년월일_사업자번호||'').trim();
-      const exYeonbun  = er.연번;
-      const exName     = er.이름;
-      const exBirth    = er.생년월일;
-
-      if(dbYeonbun !== exYeonbun)   diffs.push({field:'연번',    db:String(dbYeonbun), excel:String(exYeonbun), isKey:true});
-      if(dbName    !== exName)      diffs.push({field:'이름',    db:dbName||'—',       excel:exName,            isKey:true});
-      if(dbBirth   !== exBirth && exBirth) diffs.push({field:'생년월일', db:dbBirth||'—', excel:exBirth,       isKey:true});
-
-      // 기타 정보 비교 (연번/이름/생년월일이 같아도 다른 것들)
-      if((db.owner?.성별||'').trim()   !== er.성별    && er.성별)    diffs.push({field:'성별',      db:db.owner?.성별||'—',    excel:er.성별});
-      if((db.owner?.전화번호||'').trim()!== er.전화번호&& er.전화번호)diffs.push({field:'전화번호',  db:db.owner?.전화번호||'—',excel:er.전화번호});
-      if((db['소유형태']||'').trim()   !== er.소유형태 && er.소유형태)diffs.push({field:'소유형태',  db:db['소유형태']||'—',    excel:er.소유형태});
-      if((db['등기유형']||'').trim()   !== er.등기유형 && er.등기유형)diffs.push({field:'등기유형',  db:db['등기유형']||'—',    excel:er.등기유형});
-
-      if(diffs.length > 0) {
-        const isOwnerChange = diffs.some(d=>d.isKey);
-        changed.push({
-          key:k, 부동산ID:er.부동산ID, 부번:er.부번,
-          isOwnerChange,
-          // DB 현재 데이터
-          db: { 연번:dbYeonbun, 이름:dbName, 생년월일:dbBirth,
-                성별:db.owner?.성별||'', 전화번호:db.owner?.전화번호||'',
-                소유형태:db['소유형태']||'', 등기유형:db['등기유형']||'',
-                owner_id:db.owner_id },
-          // 엑셀 새 데이터
-          excel: { 연번:er.연번, 이름:er.이름, 생년월일:er.생년월일,
-                   성별:er.성별, 전화번호:er.전화번호,
-                   소유형태:er.소유형태, 등기유형:er.등기유형,
-                   동:er.동, 호:er.호 },
-          diffs,
-          applied: false
-        });
-      }
-    });
-
-    // DB에만 있는 항목
-    dbRows.forEach(r => {
-      const k = `${r['부동산코드']}-${r['부번']}`;
-      if(!excelMap[k]) onlyDB.push(r);
-    });
-
-    // 전역 저장
-    window._rosterChanged = changed;
-    window._rosterOnlyExcel = onlyExcel;
-    window._rosterOnlyDB = onlyDB;
-
-    const ownerChangeCnt = changed.filter(c=>c.isOwnerChange).length;
-    const infoChangeCnt  = changed.filter(c=>!c.isOwnerChange).length;
-
-    // ── STEP 4: 결과 렌더링 ──
-    resultEl.innerHTML = `
-      <!-- 요약 카드 -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-        <div class="stat-card"><div class="stat-label">엑셀 행 수</div><div class="stat-value" style="color:var(--accent)">${excelRows.length.toLocaleString()}</div><div class="stat-sub">DB ${dbRows.length.toLocaleString()}건</div></div>
-        <div class="stat-card" style="border-color:var(--red)">
-          <div class="stat-label">🔴 소유주 변경</div>
-          <div class="stat-value" style="color:var(--red)">${ownerChangeCnt}</div>
-          <div class="stat-sub">연번·이름·생년월일 변동</div>
-        </div>
-        <div class="stat-card" style="border-color:var(--yellow)">
-          <div class="stat-label">🟡 정보 변경</div>
-          <div class="stat-value" style="color:var(--yellow)">${infoChangeCnt}</div>
-          <div class="stat-sub">기타 정보만 다름</div>
-        </div>
-        <div class="stat-card" style="border-color:var(--green)">
-          <div class="stat-label">🆕 신규 / ⚠️ 삭제</div>
-          <div class="stat-value" style="color:var(--green)">${onlyExcel.length} <span style="color:var(--text3);font-size:14px">/ ${onlyDB.length}</span></div>
-          <div class="stat-sub">엑셀신규 / DB에만있음</div>
-        </div>
-      </div>
-
-      ${changed.length === 0 && onlyExcel.length === 0 && onlyDB.length === 0 ? `
-        <div class="empty-state"><div class="empty-icon">✅</div><p>DB와 완전히 일치합니다. 변경 사항이 없습니다.</p></div>` : ''}
-
-      <!-- 소유주 변경 + 기타 정보 변경 통합 목록 -->
-      ${changed.length ? `
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div>
-            <div class="card-title" style="margin-bottom:2px">변경 감지 항목 — ${changed.length}건</div>
-            <div style="font-size:11px;color:var(--text3)">🔴 소유주 변경(연번·이름·생년월일 포함): ${ownerChangeCnt}건 &nbsp;|&nbsp; 🟡 기타 정보 변경: ${infoChangeCnt}건</div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-sm btn-ghost" onclick="toggleAllSelect(true)">전체 선택</button>
-            <button class="btn btn-sm btn-ghost" onclick="toggleAllSelect(false)">전체 해제</button>
-            <button class="btn btn-sm btn-blue" onclick="applySelectedChanges()">✅ 선택 항목 교체</button>
-          </div>
-        </div>
-        <div class="table-wrap" style="max-height:420px;overflow-y:auto">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:36px"><input type="checkbox" id="chk-all" onchange="toggleAllSelect(this.checked)" title="전체선택"></th>
-                <th>부동산ID</th><th>부번</th><th>구분</th>
-                <th>현재 DB 값</th><th>엑셀 새 값</th><th>변경 항목</th>
-              </tr>
-            </thead>
-            <tbody id="change-list-tbody">
-              ${changed.map((c,i) => {
-                const typeBadge = c.isOwnerChange
-                  ? `<span class="badge badge-red">소유주 변경</span>`
-                  : `<span class="badge badge-yellow">정보 변경</span>`;
-                const keyDiffs  = c.diffs.filter(d=>d.isKey);
-                const infoDiffs = c.diffs.filter(d=>!d.isKey);
-                const dbSummary = `${c.db.이름} / ${c.db.생년월일||'—'} / 연번${c.db.연번}`;
-                const exSummary = `${c.excel.이름} / ${c.excel.생년월일||'—'} / 연번${c.excel.연번}`;
-                return `<tr id="chg-row-${i}">
-                  <td style="text-align:center"><input type="checkbox" class="chg-chk" data-idx="${i}"></td>
-                  <td class="mono"><strong>${c.부동산ID}</strong><br><span style="font-size:10px;color:var(--text3)">${c.excel.동||''}동 ${c.excel.호||''}호</span></td>
-                  <td class="mono">${c.부번}</td>
-                  <td>${typeBadge}</td>
-                  <td style="font-size:11px;color:var(--text2)">${dbSummary}</td>
-                  <td style="font-size:11px;color:var(--green);font-weight:500">${exSummary}</td>
-                  <td style="font-size:11px">
-                    ${c.diffs.map(d=>`
-                      <span style="color:${d.isKey?'var(--red)':'var(--yellow)'}">${d.field}</span>:
-                      <del style="color:var(--text3)">${d.db}</del>→<strong>${d.excel}</strong>
-                    `).join(' &nbsp; ')}
-                  </td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div style="padding:10px 12px;background:var(--yellow-soft);border-radius:8px;margin-top:10px;font-size:12px;color:var(--yellow)">
-          ⚠️ <strong>소유주 변경</strong>의 경우: 기존 registration 행은 <code>is_current=false + 소유종료일</code>로 보존되고,
-          새 소유주가 owner 테이블에 추가(또는 기존 매칭)된 뒤 registration에 신규 행으로 삽입됩니다.
-          변경 이력은 <code>owner_change_log</code>에 자동 기록됩니다.
-        </div>
-      </div>` : ''}
-
-      <!-- 엑셀에만 있음 (신규) -->
-      ${onlyExcel.length ? `
-      <div class="card" style="margin-bottom:16px;border-color:var(--green)">
-        <div class="card-title" style="color:var(--green)">🆕 엑셀에만 있음 (DB에 없는 부동산ID) — ${onlyExcel.length}건</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">새로 추가된 부동산 또는 새로운 소유자입니다. 현재는 표시만 합니다 (직접 추가 필요).</div>
-        <div class="table-wrap" style="max-height:180px;overflow-y:auto">
-          <table><thead><tr><th>연번</th><th>부번</th><th>부동산ID</th><th>이름</th><th>생년월일</th><th>전화번호</th></tr></thead>
-          <tbody>${onlyExcel.slice(0,50).map(r=>`<tr>
-            <td class="mono">${r.연번}</td><td>${r.부번}</td><td class="mono">${r.부동산ID}</td>
-            <td>${r.이름}</td><td class="mono">${r.생년월일||'—'}</td><td class="mono">${r.전화번호||'—'}</td>
-          </tr>`).join('')}
-          ${onlyExcel.length>50?`<tr><td colspan="6" style="text-align:center;color:var(--text3)">... 외 ${onlyExcel.length-50}건</td></tr>`:''}</tbody>
-        </table></div>
-      </div>` : ''}
-
-      <!-- DB에만 있음 -->
-      ${onlyDB.length ? `
-      <div class="card" style="margin-bottom:16px;border-color:var(--text3)">
-        <div class="card-title">⚠️ DB에만 있음 (엑셀에서 사라진 부동산ID) — ${onlyDB.length}건</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">엑셀 명부에서 빠진 항목입니다. 소유권 이전 등으로 삭제된 것일 수 있습니다.</div>
-        <div class="table-wrap" style="max-height:180px;overflow-y:auto">
-          <table><thead><tr><th>연번</th><th>부번</th><th>부동산ID</th><th>이름</th><th>생년월일</th></tr></thead>
-          <tbody>${onlyDB.slice(0,50).map(r=>`<tr>
-            <td class="mono">${r['연번']}</td><td>${r['부번']}</td><td class="mono">${r['부동산코드']}</td>
-            <td>${r.owner?.이름||'—'}</td><td class="mono">${r.owner?.생년월일_사업자번호||'—'}</td>
-          </tr>`).join('')}
-          ${onlyDB.length>50?`<tr><td colspan="5" style="text-align:center;color:var(--text3)">... 외 ${onlyDB.length-50}건</td></tr>`:''}</tbody>
-        </table></div>
-      </div>` : ''}
-    `;
-
+    progEl.style.display='none';
+    renderRosterResult(classified, excelRows.length, dbRows.length);
   } catch(e) {
     resultEl.innerHTML = `<div class="empty-state"><p>오류: ${e.message}</p></div>`;
-    console.error(e);
+    progEl.style.display='none'; console.error(e);
   }
 }
 
-// ── 체크박스 전체 선택/해제 ──
-function toggleAllSelect(checked) {
-  document.querySelectorAll('.chg-chk').forEach(c => { c.checked = checked; });
-  const allChk = document.getElementById('chk-all');
-  if(allChk) allChk.checked = checked;
+function buildNewPropRows(items) {
+  return items.slice(0,50).map(function(r){
+    return '<tr><td>'+r.연번+'</td><td>'+r.이름+'</td>'
+      +'<td class="mono" style="font-size:11px">'+(r.등기고유번호||'—')+'</td>'
+      +'<td>'+(r.동||'')+'동 '+(r.호||'')+'호</td></tr>';
+  }).join('') + (items.length>50 ? '<tr><td colspan="4" style="text-align:center;color:var(--text3)">... 외 '+(items.length-50)+'건</td></tr>' : '');
+}
+function buildMissingRows(items) {
+  return items.slice(0,50).map(function(r){
+    return '<tr><td>'+r['연번']+'</td><td>'+(r.owner&&r.owner.이름||'—')+'</td>'
+      +'<td class="mono">'+r['부동산코드']+'</td></tr>';
+  }).join('') + (items.length>50 ? '<tr><td colspan="3" style="text-align:center;color:var(--text3)">... 외 '+(items.length-50)+'건</td></tr>' : '');
+}
+function buildTabHtml(tabs) {
+  return '<div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border);padding-bottom:0">'
+    + tabs.map(function(t,i){
+        return '<div class="roster-tab'+(i===0?' active':'')+'" data-tab="'+t.key+'" onclick="switchRosterTab(\''+t.key+'\')" '
+          +'style="padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid '+(i===0?'var(--accent)':'transparent')+';margin-bottom:-2px;color:'+(i===0?'var(--accent)':'var(--text2)')+';transition:all 0.15s">'+t.label+'</div>';
+      }).join('')
+    + '</div>';
+}
+function renderRosterResult(c, exTotal, dbTotal) {
+  var resultEl = document.getElementById('roster-compare-result');
+  var totalChanges = c.dataUpdate.length+c.ownerReplace.length+c.soloToJointKeep.length+
+    c.soloToJointNew.length+c.jointToSolo.length+c.jointPartial.length+c.jointToJoint.length;
+  if(!totalChanges && !c.newProperty.length && !c.missingInExcel.length) {
+    resultEl.innerHTML='<div class="empty-state"><div class="empty-icon">✅</div><p>DB와 완전히 일치합니다.</p></div>'; return;
+  }
+  var caseStyle = {
+    dataUpdate:      {color:'var(--accent)', label:'① 데이터 업데이트'},
+    ownerReplace:    {color:'var(--red)',    label:'② 단독→단독 교체'},
+    soloToJointKeep: {color:'var(--yellow)', label:'③ 단독→공동(기존포함)'},
+    soloToJointNew:  {color:'var(--red)',    label:'④ 단독→공동(완전교체)'},
+    jointToSolo:     {color:'var(--red)',    label:'⑤ 공동→단독'},
+    jointPartial:    {color:'var(--yellow)', label:'⑥ 공동 일부 교체'},
+    jointToJoint:    {color:'var(--red)',    label:'⑦ 공동→공동 완전교체'},
+  };
+  var summaryHtml = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">'
+    +'<div class="stat-card"><div class="stat-label">엑셀 행 수</div><div class="stat-value" style="color:var(--accent)">'+exTotal.toLocaleString()+'</div><div class="stat-sub">DB '+dbTotal.toLocaleString()+'건</div></div>'
+    +'<div class="stat-card" style="border-color:var(--red)"><div class="stat-label">🔴 소유주 변경</div><div class="stat-value" style="color:var(--red)">'+(c.ownerReplace.length+c.soloToJointNew.length+c.jointToSolo.length+c.jointToJoint.length)+'</div><div class="stat-sub">②④⑤⑦</div></div>'
+    +'<div class="stat-card" style="border-color:var(--yellow)"><div class="stat-label">🟡 소유구성 변경</div><div class="stat-value" style="color:var(--yellow)">'+(c.soloToJointKeep.length+c.jointPartial.length)+'</div><div class="stat-sub">③⑥</div></div>'
+    +'<div class="stat-card" style="border-color:var(--green)"><div class="stat-label">🔵 데이터 / ⚠️ 신규·누락</div><div class="stat-value" style="color:var(--green)">'+c.dataUpdate.length+' <span style="color:var(--text3);font-size:12px">/ '+(c.newProperty.length+c.missingInExcel.length)+'</span></div><div class="stat-sub">정보변경 / 신규·누락</div></div>'
+    +'</div>';
+
+  function makeCaseRows(caseKey, items) {
+    return items.map(function(item, idx) {
+      var propCode = (item.dbs&&item.dbs[0] ? item.dbs[0]['부동산코드'] : null) || (item.exs&&item.exs[0] ? item.exs[0].부동산코드 : null) || item.등기고유번호||'';
+      var dbNames = (item.dbs||[]).map(function(d){ return (d.owner&&d.owner.이름||'?')+'('+(d.owner&&d.owner.생년월일_사업자번호||'?')+')'; }).join(', ');
+      var exNames = (item.exs||[]).map(function(e){ return e.이름+'('+(e.생년월일||'?')+')'; }).join(', ');
+      var yeonbunDB = [...new Set((item.dbs||[]).map(function(d){return d['연번'];}))].join(',');
+      var yeonbunEx = [...new Set((item.exs||[]).map(function(e){return e.연번;}))].join(',');
+      return '<tr id="caserow-'+caseKey+'-'+idx+'">'
+        +'<td style="text-align:center"><input type="checkbox" class="case-chk" data-case="'+caseKey+'" data-idx="'+idx+'"></td>'
+        +'<td class="mono" style="font-size:12px"><strong>'+propCode+'</strong><br><span style="color:var(--text3);font-size:10px">'+(item.등기고유번호||'')+'</span></td>'
+        +'<td style="font-size:11px;color:var(--text2)">'+(dbNames||'—')+'<br><span style="color:var(--text3)">연번: '+yeonbunDB+'</span></td>'
+        +'<td style="font-size:11px;color:var(--green);font-weight:500">'+(exNames||'—')+'<br><span style="color:var(--text3)">연번: '+yeonbunEx+'</span></td>'
+        +'<td style="font-size:11px">'+(yeonbunDB!==yeonbunEx?'<span style="color:var(--red)">⚠연번변경</span>':'')+'</td>'
+        +'</tr>';
+    }).join('');
+  }
+
+  function makeCaseSection(caseKey, items) {
+    if(!items.length) return '';
+    var cs = caseStyle[caseKey];
+    return '<div style="margin-bottom:16px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +'<div style="font-weight:600;font-size:13px;color:'+cs.color+'">'+cs.label+' — '+items.length+'건</div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<button class="btn btn-sm btn-ghost" onclick="toggleCaseSelect(\''+caseKey+'\',true)">전체선택</button>'
+      +'<button class="btn btn-sm btn-ghost" onclick="toggleCaseSelect(\''+caseKey+'\',false)">해제</button>'
+      +'</div></div>'
+      +'<div class="table-wrap" style="max-height:300px;overflow-y:auto">'
+      +'<table><thead><tr>'
+      +'<th style="width:36px"><input type="checkbox" onchange="toggleCaseSelect(\''+caseKey+'\',this.checked)"></th>'
+      +'<th>부동산코드</th><th>기존 소유구성</th><th>새 소유구성</th><th>비고</th>'
+      +'</tr></thead><tbody>'+makeCaseRows(caseKey, items)+'</tbody></table>'
+      +'</div></div>';
+  }
+
+  var dataUpdateRows = c.dataUpdate.map(function(item, idx) {
+    var propCode = (item.dbs&&item.dbs[0] ? item.dbs[0]['부동산코드'] : '')||'';
+    var ownerName = (item.dbs&&item.dbs[0]&&item.dbs[0].owner ? item.dbs[0].owner.이름 : '')||'—';
+    var diffSummary = (item.diffs||[]).flatMap(function(d){return d.diffs;}).map(function(d){return d.field+': '+d.db+'→'+d.excel;}).join(' | ');
+    return '<tr id="caserow-dataUpdate-'+idx+'">'
+      +'<td style="text-align:center"><input type="checkbox" class="case-chk" data-case="dataUpdate" data-idx="'+idx+'"></td>'
+      +'<td class="mono" style="font-size:12px"><strong>'+propCode+'</strong></td>'
+      +'<td style="font-size:12px">'+ownerName+'</td>'
+      +'<td style="font-size:11px;color:var(--accent)">'+diffSummary+'</td>'
+      +'</tr>';
+  }).join('');
+
+  // 신규·누락 탭 HTML (중첩 백틱 없이 문자열 연결로)
+  var newMissingHtml = '';
+  if(c.newProperty.length) {
+    newMissingHtml += '<div class="card" style="margin-bottom:12px;border-color:var(--green)">'
+      +'<div class="card-title" style="color:var(--green)">🆕 신규/매칭안됨 — '+c.newProperty.length+'건</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">등기고유번호가 DB에 없거나 property 미등록. 수동 등록 필요.</div>'
+      +'<div class="table-wrap" style="max-height:160px;overflow-y:auto">'
+      +'<table><thead><tr><th>연번</th><th>이름</th><th>등기고유번호</th><th>동/호</th></tr></thead>'
+      +'<tbody>'+buildNewPropRows(c.newProperty)+'</tbody></table></div></div>';
+  }
+  if(c.missingInExcel.length) {
+    newMissingHtml += '<div class="card" style="border-color:var(--text3)">'
+      +'<div class="card-title">⚠️ DB에만 있음 (엑셀 누락) — '+c.missingInExcel.length+'건</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">엑셀 명부에서 사라진 항목. 소유권 이전 여부 확인 필요.</div>'
+      +'<div class="table-wrap" style="max-height:160px;overflow-y:auto">'
+      +'<table><thead><tr><th>연번</th><th>이름</th><th>부동산코드</th></tr></thead>'
+      +'<tbody>'+buildMissingRows(c.missingInExcel)+'</tbody></table></div></div>';
+  }
+  if(!c.newProperty.length && !c.missingInExcel.length) {
+    newMissingHtml = '<div class="empty-state" style="padding:20px"><p>없음</p></div>';
+  }
+
+  var tabContents = {
+    소유주변경: ['ownerReplace','soloToJointNew','jointToSolo','jointToJoint'].map(function(k){return makeCaseSection(k,c[k]||[]);}).join('')||'<div class="empty-state" style="padding:20px"><p>없음</p></div>',
+    소유구성변경: ['soloToJointKeep','jointPartial'].map(function(k){return makeCaseSection(k,c[k]||[]);}).join('')||'<div class="empty-state" style="padding:20px"><p>없음</p></div>',
+    데이터업데이트: c.dataUpdate.length
+      ? '<div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr>'
+        +'<th style="width:36px"><input type="checkbox" onchange="toggleCaseSelect(\'dataUpdate\',this.checked)"></th>'
+        +'<th>부동산코드</th><th>소유주</th><th>변경 항목</th>'
+        +'</tr></thead><tbody>'+dataUpdateRows+'</tbody></table></div>'
+      : '<div class="empty-state" style="padding:20px"><p>없음</p></div>',
+    신규누락: newMissingHtml,
+  };
+  window._rosterTabContents = tabContents;
+
+  var tabs = [
+    {key:'소유주변경',   label:'소유주 변경 ('+(c.ownerReplace.length+c.soloToJointNew.length+c.jointToSolo.length+c.jointToJoint.length)+')'},
+    {key:'소유구성변경', label:'소유구성 변경 ('+(c.soloToJointKeep.length+c.jointPartial.length)+')'},
+    {key:'데이터업데이트', label:'데이터 업데이트 ('+c.dataUpdate.length+')'},
+    {key:'신규누락',    label:'신규·누락 ('+(c.newProperty.length+c.missingInExcel.length)+')'},
+  ];
+
+  resultEl.innerHTML = summaryHtml
+    + '<div class="card">'
+    + buildTabHtml(tabs)
+    + '<div id="roster-tab-content">'+tabContents['소유주변경']+'</div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+    + '<button class="btn btn-ghost" onclick="document.querySelectorAll(\'.case-chk\').forEach(function(c){c.checked=false;})">전체 해제</button>'
+    + '<button class="btn btn-blue" onclick="applySelectedChanges()" id="btn-apply-roster">✅ 선택 항목 적용</button>'
+    + '</div></div>';
 }
 
-// ── 선택 항목 교체 실행 ──
+function switchRosterTab(key) {
+  document.querySelectorAll('.roster-tab').forEach(el => {
+    const a = el.dataset.tab===key;
+    el.style.borderBottomColor = a?'var(--accent)':'transparent';
+    el.style.color = a?'var(--accent)':'var(--text2)';
+  });
+  const cont = document.getElementById('roster-tab-content');
+  if(cont) cont.innerHTML = (window._rosterTabContents||{})[key]||'';
+}
+
+function toggleCaseSelect(caseKey, checked) {
+  document.querySelectorAll(`.case-chk[data-case="${caseKey}"]`).forEach(c => { c.checked=checked; });
+}
+
 async function applySelectedChanges() {
-  const checked = [...document.querySelectorAll('.chg-chk:checked')];
-  if(!checked.length) { showToast('교체할 항목을 선택해주세요.','error'); return; }
-  const indices = checked.map(c => parseInt(c.dataset.idx));
-  const list = (window._rosterChanged||[]).filter((_,i)=>indices.includes(i));
+  const checked = [...document.querySelectorAll('.case-chk:checked')];
+  if(!checked.length) { showToast('적용할 항목을 선택해주세요.','error'); return; }
+  const c = window._rosterClassified;
+  if(!c) { showToast('분석 결과가 없습니다. 파일을 다시 업로드해주세요.','error'); return; }
 
-  const ownerChangeList = list.filter(c=>c.isOwnerChange);
-  const infoChangeList  = list.filter(c=>!c.isOwnerChange);
+  const selected = {};
+  checked.forEach(chk => { const k=chk.dataset.case, i=parseInt(chk.dataset.idx); if(!selected[k])selected[k]=[]; selected[k].push(i); });
 
-  const confirmMsg = [
-    `선택된 ${list.length}건을 교체합니다.`,
-    ownerChangeList.length ? `\n• 소유주 변경 ${ownerChangeList.length}건 — 기존 기록 보존 후 신규 소유주 추가` : '',
-    infoChangeList.length  ? `\n• 정보 변경 ${infoChangeList.length}건 — 해당 컬럼 값 업데이트` : '',
-    `\n\n계속하시겠습니까?`
-  ].join('');
-
-  if(!confirm(confirmMsg)) return;
-
-  const btn = document.querySelector('[onclick="applySelectedChanges()"]');
+  if(!confirm(`선택된 ${checked.length}건을 DB에 적용합니다. 이 작업은 되돌리기 어렵습니다. 계속하시겠습니까?`)) return;
+  const btn = document.getElementById('btn-apply-roster');
   if(btn) { btn.disabled=true; btn.textContent='처리 중...'; }
 
   const {data:{user}} = await _sb.auth.getUser();
-  const {data:appUser} = await _sb.from('app_user').select('name').eq('username',user?.email||'').single();
-  const processorName = appUser?.name || '위원장';
+  const {data:appUser} = await _sb.from('app_user').select('name').eq('username', user?.email||'').single();
+  const processor = appUser?.name||'위원장';
 
   let ok=0, fail=0;
 
-  // ── 소유주 변경 처리 ──
-  for(const c of ownerChangeList) {
+  // ① 데이터 업데이트
+  for(const idx of (selected.dataUpdate||[])) {
+    const item = c.dataUpdate[idx];
     try {
-      // 새 소유주의 등기원인일 = 기존 소유주의 소유종료일
-      // 날짜 형식 정규화: "2024.03.15" → "2024-03-15", 빈값이면 null
-      const rawDate = c.excel.등기원인일 || '';
-      const 소유종료일 = rawDate
-        ? rawDate.replace(/\./g, '-').replace(/[^0-9\-]/g, '').slice(0, 10) || null
-        : null;
+      for(const {dbRow, ex, diffs} of item.diffs) {
+        const ownerUpd={}, regUpd={};
+        diffs.forEach(d => {
+          if(d.field==='소유형태') regUpd.소유형태=d.excel;
+          if(d.field==='등기유형') regUpd.등기유형=d.excel;
+          if(d.field==='거주구분') regUpd.거주구분=d.excel;
+          if(d.field==='연번')     regUpd.연번=d.excel;
+        });
+        if(Object.keys(ownerUpd).length) await _sb.from('owner').update(ownerUpd).eq('id', dbRow.owner_id);
+        if(Object.keys(regUpd).length)   await _sb.from('registration').update(regUpd).eq('부동산코드',dbRow['부동산코드']).eq('owner_id',dbRow.owner_id).eq('is_current',true);
+      }
+      ok++; markRowDone(`caserow-dataUpdate-${idx}`);
+    } catch(e) { fail++; console.error('dataUpdate', item.등기고유번호, e); }
+  }
 
-      // 1) 기존 registration 행: is_current=false, 소유종료일 기록
-      await _sb.from('registration')
-        .update({ is_current: false, 소유종료일 })
-        .eq('연번', c.db.연번)
-        .eq('부동산코드', c.부동산ID)
-        .eq('owner_id', c.db.owner_id);
+  // ②~⑦ 소유주/소유구성 변경 공통 처리
+  async function processOwnerChange(item, caseLabel) {
+    const rawDate = (item.exs[0]?.등기원인일||'').replace(/\./g,'-').replace(/[^0-9\-]/g,'').slice(0,10)||null;
+    const 소유종료일 = rawDate||null;
+    const propCode = item.dbs[0]?.['부동산코드'] || item.exs[0]?.부동산코드;
 
-      // 2) 새 소유주 owner 테이블 upsert (이름+생년월일 기준 중복 방지)
-      let newOwnerId = null;
-      const {data:existing} = await _sb.from('owner')
-        .select('id')
-        .eq('이름', c.excel.이름)
-        .eq('생년월일_사업자번호', c.excel.생년월일||'')
-        .maybeSingle();
+    for(const dbRow of item.dbs) {
+      await _sb.from('registration').update({is_current:false, 소유종료일}).eq('부동산코드',propCode).eq('owner_id',dbRow.owner_id).eq('is_current',true);
+      await _sb.from('payment').update({is_previous_owner:true}).eq('연번',dbRow['연번']).eq('owner_id',dbRow.owner_id);
+    }
 
-      if(existing?.id) {
-        newOwnerId = existing.id;
-        // 전화번호 등 업데이트
-        if(c.excel.전화번호) await _sb.from('owner').update({전화번호:c.excel.전화번호}).eq('id',newOwnerId);
-      } else {
-        const {data:inserted, error:insErr} = await _sb.from('owner').insert({
-          이름: c.excel.이름,
-          생년월일_사업자번호: c.excel.생년월일||'',
-          성별: c.excel.성별||null,
-          전화번호: c.excel.전화번호||null,
-        }).select('id').single();
+    const newOwnerIds=[];
+    for(let i=0;i<item.exs.length;i++) {
+      const ex=item.exs[i];
+      let newId=null;
+      const {data:existing}=await _sb.from('owner').select('id').eq('이름',ex.이름).eq('생년월일_사업자번호',ex.생년월일||'').maybeSingle();
+      if(existing?.id) { newId=existing.id; if(ex.전화번호) await _sb.from('owner').update({전화번호:ex.전화번호}).eq('id',newId); }
+      else {
+        const {data:ins,error:insErr}=await _sb.from('owner').insert({이름:ex.이름,생년월일_사업자번호:ex.생년월일||'',성별:ex.성별||null,전화번호:ex.전화번호||null}).select('id').single();
         if(insErr) throw insErr;
-        newOwnerId = inserted.id;
+        newId=ins.id;
       }
+      newOwnerIds.push(newId);
+      await _sb.from('registration').insert({연번:ex.연번,부동산코드:propCode,owner_id:newId,부번:ex.부번||(i+1),대표소유주:(ex.부번||i+1)===1,소유형태:ex.소유형태||null,등기유형:ex.등기유형||null,등기원인일:ex.등기원인일||null,거주구분:ex.거주구분||null,등기상주소:ex.등기상주소||null,is_current:true});
+    }
 
-      // 3) 새 registration 행 삽입 (등기원인일 포함)
-      await _sb.from('registration').insert({
-        연번:       c.excel.연번,
-        부동산코드: c.부동산ID,
-        owner_id:   newOwnerId,
-        부번:       c.부번,
-        소유형태:   c.excel.소유형태||null,
-        등기유형:   c.excel.등기유형||null,
-        등기원인일: c.excel.등기원인일||null,
-        is_current: true,
-        대표소유주: c.부번 === 1,
-      });
+    const oldYeonbuns=[...new Set(item.dbs.map(d=>d['연번']))];
+    for(const yn of oldYeonbuns) {
+      await _sb.from('consent').update({상태:'미제출',접수방법:null,제출일시:null,수정자:processor}).eq('연번',yn).neq('상태','미제출');
+    }
 
-      // 4) 동의서 전체 초기화 — 새 소유주는 직접 다시 제출해야 함
-      //    해당 연번의 모든 차수를 미제출로 초기화
-      await _sb.from('consent')
-        .update({
-          상태:     '미제출',
-          접수방법:  null,
-          제출일시:  null,
-          수정자:   processorName,
-          수정일시:  nowKST(),
-        })
-        .eq('연번', c.db.연번)
-        .neq('상태', '미제출'); // 이미 미제출인 것은 불필요한 업데이트 방지
-
-      // 5) 기존 납부 기록에 이전 소유주 표시
-      //    금액은 그대로 유지하고 is_previous_owner=true 로 표시만 함
-      await _sb.from('payment')
-        .update({ is_previous_owner: true })
-        .eq('연번', c.db.연번)
-        .eq('owner_id', c.db.owner_id);
-
-      // 6) 변경 이력 기록 (소유종료일 = 새 소유주 등기원인일)
-      await _sb.from('owner_change_log').insert({
-        부동산코드:  c.부동산ID,
-        연번_전:     c.db.연번,
-        연번_후:     c.excel.연번,
-        owner_id_전: c.db.owner_id,
-        owner_id_후: newOwnerId,
-        이름_전:     c.db.이름,
-        이름_후:     c.excel.이름,
-        생년월일_전: c.db.생년월일,
-        생년월일_후: c.excel.생년월일,
-        소유종료일:  소유종료일,
-        변경사유:    '소유주명부 교체',
-        처리자:      processorName,
-      });
-
-      ok++;
-    } catch(e) {
-      console.error('소유주변경 실패:', c.부동산ID, e);
-      fail++;
+    for(let i=0;i<item.dbs.length;i++) {
+      const dbRow=item.dbs[i];
+      await _sb.from('owner_change_log').insert({부동산코드:propCode,연번_전:dbRow['연번'],연번_후:item.exs[0]?.연번,owner_id_전:dbRow.owner_id,owner_id_후:newOwnerIds[0],이름_전:dbRow.owner?.이름,이름_후:item.exs[0]?.이름,생년월일_전:dbRow.owner?.생년월일_사업자번호,생년월일_후:item.exs[0]?.생년월일,소유종료일,변경사유:caseLabel,처리자:processor});
     }
   }
 
-  // ── 기타 정보 변경 처리 ──
-  for(const c of infoChangeList) {
-    try {
-      const ownerUpdate = {}, yoUpdate = {};
-      c.diffs.forEach(d => {
-        if(d.field==='성별')     ownerUpdate.성별=d.excel;
-        if(d.field==='전화번호') ownerUpdate.전화번호=d.excel;
-        if(d.field==='소유형태') yoUpdate.소유형태=d.excel;
-        if(d.field==='등기유형') yoUpdate.등기유형=d.excel;
-      });
-      if(Object.keys(ownerUpdate).length) {
-        await _sb.from('owner').update(ownerUpdate).eq('id', c.db.owner_id);
-      }
-      if(Object.keys(yoUpdate).length) {
-        await _sb.from('registration').update(yoUpdate)
-          .eq('연번', c.db.연번)
-          .eq('부동산코드', c.부동산ID)
-          .eq('owner_id', c.db.owner_id);
-      }
-      ok++;
-    } catch(e) {
-      console.error('정보변경 실패:', c.부동산ID, e);
-      fail++;
+  const changeCases=[['ownerReplace','② 단독→단독 교체'],['soloToJointNew','④ 단독→공동 완전교체'],['jointToSolo','⑤ 공동→단독'],['jointToJoint','⑦ 공동→공동 완전교체'],['soloToJointKeep','③ 단독→공동(기존포함)'],['jointPartial','⑥ 공동 일부 교체']];
+  for(const [caseKey,caseLabel] of changeCases) {
+    for(const idx of (selected[caseKey]||[])) {
+      const item=c[caseKey][idx];
+      try { await processOwnerChange(item,caseLabel); ok++; markRowDone(`caserow-${caseKey}-${idx}`); }
+      catch(e) { fail++; console.error(caseLabel, item.등기고유번호, e); }
     }
   }
 
-  if(btn) { btn.disabled=false; btn.textContent='✅ 선택 항목 교체'; }
+  if(btn) { btn.disabled=false; btn.textContent='✅ 선택 항목 적용'; }
+  showToast('처리 완료: '+ok+'건 성공'+(fail?', '+fail+'건 실패':''), ok>0&&!fail?'success':'error');
+}
 
-  // 처리 완료된 행 시각적 표시
-  indices.forEach(i => {
-    const row = document.getElementById(`chg-row-${i}`);
-    if(row) {
-      row.style.opacity='0.45';
-      row.style.background='var(--green-soft)';
-      const chk = row.querySelector('.chg-chk');
-      if(chk) chk.disabled = true;
-    }
-  });
-
-  const msg = [
-    `처리 완료: ${ok}건 성공${fail?', '+fail+'건 실패':''}`,
-    ownerChangeList.length ? `\n• 동의서 초기화 완료 (미제출로)` : '',
-    ownerChangeList.length ? `\n• 이전 소유주 납부 기록 표시 완료` : '',
-  ].join('');
-  showToast(msg, ok>0&&fail===0?'success':'error');
+function markRowDone(rowId) {
+  const row=document.getElementById(rowId);
+  if(row){row.style.opacity='0.4';row.style.background='var(--green-soft)';}
 }
 
 // ════════════════════════════════════════════════
