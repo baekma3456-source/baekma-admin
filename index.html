@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2</title>
+<title>백마마을 재건축 — 관리자앱 v2.13</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2</div>
+      <div class="site-sub">관리자앱 v2.13</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -985,9 +985,13 @@ async function renderOwnerTable(rows, total, totalPages) {
       return all;
     })(),
     (async()=>{
+      // 다주택: owner_id별 보유 부동산코드 수 파악
       let all=[];
       for(let i=0;i<ynNums.length;i+=500){
-        const {data}=await _sb.from('registration').select('연번').in('연번',ynNums.slice(i,i+500));
+        const {data}=await _sb.from('registration')
+          .select('연번,owner_id,부동산코드')
+          .in('연번',ynNums.slice(i,i+500))
+          .eq('is_current',true);
         if(data) all=all.concat(data);
       }
       return all;
@@ -996,7 +1000,21 @@ async function renderOwnerTable(rows, total, totalPages) {
 
   consentRows.forEach(c=>{ if(!consentMap[c['연번']])consentMap[c['연번']]=[]; consentMap[c['연번']].push(c); });
   yeonbunRows.forEach(y=>{ shihaengMap[y['연번']]=y['시행방식']||'—'; });
-  ypCountRows.forEach(y=>{ ynPropCountMap[y['연번']]=(ynPropCountMap[y['연번']]||0)+1; });
+  // 다주택: owner_id별 부동산코드(is_current) 집계 → 2개 이상이면 다주택
+  const ownerPropMap = {};
+  ypCountRows.forEach(y => {
+    const oid = y['owner_id'];
+    if(!ownerPropMap[oid]) ownerPropMap[oid] = new Set();
+    ownerPropMap[oid].add(y['부동산코드']);
+  });
+  // 부동산코드 2개 이상 보유한 owner_id 집합
+  const multiOwnerSet = new Set(
+    Object.keys(ownerPropMap).filter(oid => ownerPropMap[oid].size >= 2)
+  );
+  // 해당 owner가 속한 연번에 다주택 플래그
+  ypCountRows.forEach(y => {
+    if(multiOwnerSet.has(y['owner_id'])) ynPropCountMap[y['연번']] = 2;
+  });
 
   // 동의서 셀 — 클릭하면 수정 모달 열기
   function consentCells(yn) {
