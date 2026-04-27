@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.14</title>
+<title>백마마을 재건축 — 관리자앱 v2.15</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.14</div>
+      <div class="site-sub">관리자앱 v2.15</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -703,12 +703,27 @@ async function openDanjiModal(danji, roundNo) {
 // ════════════════════════════════════════════════
 async function renderOwners() {
   if(!consentRounds.length){const {data:rounds}=await _sb.from('consent_round').select('*').order('차수'); consentRounds=rounds||[];}
+
+  // 최상단 KPI 조회: 전체연번 / 전체세대수 / 전체소유자수 / 얼마집인증자수
+  const [{count:ownKpiYeonbun},{count:ownKpiSedae},{count:ownKpiOwner},{count:ownKpiCert}] = await Promise.all([
+    _sb.from('yeonbun').select('*',{count:'exact',head:true}).eq('is_active',true),
+    _sb.from('property').select('*',{count:'exact',head:true}),
+    _sb.from('owner').select('*',{count:'exact',head:true}),
+    _sb.from('owner').select('*',{count:'exact',head:true}).eq('얼마집_인증','O'),
+  ]);
+
   // 단지/동 목록
   const {data:danjiList}=await _sb.from('property').select('단지').limit(2000);
   const danjiSet=new Set((danjiList||[]).map(p=>p['단지']).filter(Boolean));
   const danjiArr=[...danjiSet].sort();
 
   const html=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">전체 연번</div><div class="stat-value" style="color:var(--accent)">${(ownKpiYeonbun||0).toLocaleString()}</div><div class="stat-sub">동의 집계 단위</div></div>
+      <div class="stat-card"><div class="stat-label">전체 세대수</div><div class="stat-value" style="color:var(--text)">${(ownKpiSedae||0).toLocaleString()}</div><div class="stat-sub">등록 부동산 수</div></div>
+      <div class="stat-card"><div class="stat-label">전체 소유자수</div><div class="stat-value" style="color:var(--text)">${(ownKpiOwner||0).toLocaleString()}</div><div class="stat-sub">owner 테이블 기준</div></div>
+      <div class="stat-card" style="border-color:var(--green)"><div class="stat-label">얼마집 인증자</div><div class="stat-value" style="color:var(--green)">${(ownKpiCert||0).toLocaleString()}</div><div class="stat-sub">전체 ${(ownKpiOwner||0).toLocaleString()}명 중</div></div>
+    </div>
     <div class="filter-panel">
       <!-- 보기 방식 -->
       <div class="filter-row">
@@ -1858,20 +1873,13 @@ function setActDateRange(range) {
   const today = new Date();
   const fmt = d => d.toISOString().split('T')[0];
   let from = '', to = '';
-  if(range === 'today') {
-    from = to = fmt(today);
-  } else if(range === 'week') {
-    const d = new Date(today); d.setDate(d.getDate() - 6);
-    from = fmt(d); to = fmt(today);
-  } else if(range === 'month') {
-    const d = new Date(today); d.setDate(d.getDate() - 29);
-    from = fmt(d); to = fmt(today);
-  }
-  // 'all'이면 from/to 모두 빈 값 (전체 기간)
-  const fromEl = document.getElementById('act-date-from');
-  const toEl   = document.getElementById('act-date-to');
-  if(fromEl) fromEl.value = from;
-  if(toEl)   toEl.value   = to;
+  if(range === 'today')       { from = to = fmt(today); }
+  else if(range === 'week')   { const d=new Date(today); d.setDate(d.getDate()-6); from=fmt(d); to=fmt(today); }
+  else if(range === 'month')  { const d=new Date(today); d.setDate(d.getDate()-29); from=fmt(d); to=fmt(today); }
+  const fromEl=document.getElementById('act-date-from');
+  const toEl=document.getElementById('act-date-to');
+  if(fromEl) fromEl.value=from;
+  if(toEl)   toEl.value=to;
   loadActivityList();
 }
 
@@ -1981,12 +1989,11 @@ async function renderSettings() {
     return 0;
   });
 
-  // 운영진 관리 탭 HTML (문자열 연결 — 백틱 중첩 방지)
   const staffTabHtml =
     '<div class="card">'
     + '<div class="card-title">운영진 목록</div>'
     + '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'
-    + '<button class="btn btn-blue btn-sm" onclick="showToast(\'Supabase → Authentication → Users → Add user 에서 추가하세요.\',\'info\')">+ 운영진 추가 방법</button>'
+    + '<button class="btn btn-blue btn-sm" onclick="showAddStaffGuide()">+ 운영진 추가 방법</button>'
     + '</div>'
     + '<div class="table-wrap"><table>'
     + '<thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>상태</th><th>관리</th></tr></thead>'
@@ -2004,7 +2011,6 @@ async function renderSettings() {
       ).join('')
     + '</tbody></table></div></div>';
 
-  // 소유주명부 업데이트 탭 HTML
   const rosterTabHtml =
     '<div class="card">'
     + '<div class="card-title">소유주명부 업데이트</div>'
@@ -2014,20 +2020,14 @@ async function renderSettings() {
     + '소유 구성 변경(단독↔공동, 소유주 교체 등) 7가지 케이스를 자동 감지하여 탭별로 분류합니다.'
     + '</div>'
     + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;padding:12px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text2)">'
-    + '<div>🔵 <strong>①</strong> 데이터 업데이트</div>'
-    + '<div>🔴 <strong>②</strong> 단독→단독 교체</div>'
-    + '<div>🟠 <strong>③</strong> 단독→공동(기존포함)</div>'
-    + '<div>🔴 <strong>④</strong> 단독→공동(완전교체)</div>'
-    + '<div>🔴 <strong>⑤</strong> 공동→단독</div>'
-    + '<div>🟠 <strong>⑥</strong> 공동 일부 교체</div>'
-    + '<div>🔴 <strong>⑦</strong> 공동→공동 완전교체</div>'
-    + '<div>⚠️ 신규/누락</div>'
+    + '<div>🔵 <strong>①</strong> 데이터 업데이트</div><div>🔴 <strong>②</strong> 단독→단독 교체</div>'
+    + '<div>🟠 <strong>③</strong> 단독→공동(기존포함)</div><div>🔴 <strong>④</strong> 단독→공동(완전교체)</div>'
+    + '<div>🔴 <strong>⑤</strong> 공동→단독</div><div>🟠 <strong>⑥</strong> 공동 일부 교체</div>'
+    + '<div>🔴 <strong>⑦</strong> 공동→공동 완전교체</div><div>⚠️ 신규/누락</div>'
     + '</div>'
     + '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">'
-    + '<label style="cursor:pointer">'
-    + '<span class="btn btn-blue">📂 엑셀 파일 선택</span>'
-    + '<input type="file" accept=".xlsx,.xls" id="roster-file-input" style="display:none" onchange="handleRosterImport(event)">'
-    + '</label>'
+    + '<label style="cursor:pointer"><span class="btn btn-blue">📂 엑셀 파일 선택</span>'
+    + '<input type="file" accept=".xlsx,.xls" id="roster-file-input" style="display:none" onchange="handleRosterImport(event)"></label>'
     + '<span id="roster-file-name" style="font-size:12px;color:var(--text3)">파일을 선택해주세요</span>'
     + '<span id="roster-progress" style="font-size:12px;color:var(--accent);display:none"></span>'
     + '</div>'
@@ -2035,7 +2035,6 @@ async function renderSettings() {
     + '</div>';
 
   window._settingsTabContents = { staff: staffTabHtml, roster: rosterTabHtml };
-
   document.getElementById('content').innerHTML =
     '<div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0">'
     + '<div class="settings-subtab active" data-stab="staff" onclick="switchSettingsTab(\'staff\')" style="padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--accent);margin-bottom:-2px;color:var(--accent);transition:all 0.15s">👥 운영진 관리</div>'
@@ -2052,6 +2051,37 @@ function switchSettingsTab(key) {
   });
   const cont = document.getElementById('settings-tab-content');
   if(cont) cont.innerHTML = (window._settingsTabContents||{})[key] || '';
+}
+
+function showAddStaffGuide() {
+  const w = window.open('', '_blank', 'width=560,height=620,resizable=yes,scrollbars=yes');
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+  <title>운영진 추가 방법</title>
+  <style>
+    body { font-family: 'Noto Sans KR', Arial, sans-serif; padding: 32px; background: #f8f9fa; color: #1a1d26; font-size: 14px; line-height: 1.7; }
+    h2 { font-size: 18px; font-weight: 700; color: #1B4F8A; margin-bottom: 24px; border-bottom: 2px solid #1B4F8A; padding-bottom: 10px; }
+    .step { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .step-num { min-width: 32px; height: 32px; border-radius: 50%; background: #1B4F8A; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; margin-top: 2px; }
+    .step-body { flex: 1; }
+    .step-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; color: #1a1d26; }
+    .step-desc { font-size: 13px; color: #5a6078; line-height: 1.6; }
+    code { background: #eef2ff; color: #3b6ff5; padding: 2px 7px; border-radius: 4px; font-size: 12px; font-family: monospace; }
+    .note { background: #fff3cd; border-left: 4px solid #c68e00; border-radius: 6px; padding: 12px 16px; font-size: 12px; color: #856404; margin-top: 20px; }
+    .url-box { background: #1e1e2e; color: #89b4fa; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 12px; margin-top: 8px; word-break: break-all; cursor: pointer; }
+    .copy-btn { margin-top: 20px; padding: 10px 24px; background: #1B4F8A; border: none; border-radius: 8px; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; width: 100%; }
+    .copy-btn:hover { background: #2a5ce0; }
+  </style></head><body>
+  <h2>👥 운영진 계정 추가 방법</h2>
+  <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Supabase 대시보드 접속</div><div class="step-desc">아래 URL을 클릭하거나 복사하여 브라우저에서 열어주세요.</div><div class="url-box" onclick="navigator.clipboard.writeText('https://supabase.com/dashboard').then(()=>alert('복사됨!'))">https://supabase.com/dashboard</div></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">프로젝트 선택</div><div class="step-desc">대시보드에서 <code>백마마을</code> 프로젝트를 클릭합니다.</div></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Authentication 메뉴 이동</div><div class="step-desc">왼쪽 사이드바에서 <code>Authentication</code> → <code>Users</code> 를 클릭합니다.</div></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">새 사용자 추가</div><div class="step-desc">오른쪽 상단 <code>Add user</code> 버튼 → <code>Create new user</code> 를 클릭합니다.<br>이메일과 비밀번호를 입력하고 <code>Create User</code> 를 누릅니다.</div></div></div>
+  <div class="step"><div class="step-num">5</div><div class="step-body"><div class="step-title">app_user 테이블에 등록</div><div class="step-desc">Supabase에서 <code>Table Editor</code> → <code>app_user</code> 테이블로 이동합니다.<br>새 행을 추가하고 아래 항목을 입력합니다.<br>• <code>username</code> : 위에서 입력한 이메일<br>• <code>name</code> : 표시할 이름 (예: 홍길동)<br>• <code>role</code> : <code>운영진</code><br>• <code>is_active</code> : <code>true</code></div></div></div>
+  <div class="step"><div class="step-num">6</div><div class="step-body"><div class="step-title">auth_uid 연결</div><div class="step-desc">Authentication → Users에서 방금 만든 계정의 UUID를 복사합니다.<br>app_user 테이블의 해당 행 <code>auth_uid</code> 컬럼에 붙여넣습니다.</div></div></div>
+  <div class="note">⚠️ auth_uid를 연결해야 로그인 시 권한이 정상 인식됩니다. 운영진 비밀번호 변경도 Authentication → Users에서 직접 처리하세요.</div>
+  <button class="copy-btn" onclick="window.close()">닫기</button>
+  </body></html>`);
+  w.document.close();
 }
 
 async function toggleStaffActive(id, isActive, name) {
@@ -2080,6 +2110,8 @@ function parseExcelRows(rawData) {
       생년월일:     String(r[12] || '').trim(),
       성별:         String(r[11] || '').trim(),
       전화번호:     '',
+      얼마집_인증:  String(r[8]  || '').trim(),
+      얼마집_인증일:String(r[9]  || '').trim(),
       소유형태:     String(r[10] || '').trim(),
       등기유형:     String(r[7]  || '').trim(),
       등기원인일:   String(r[20] || '').trim(),
@@ -2125,6 +2157,8 @@ function classifyChanges(dbByProp, exByProp) {
         if((dbRow['소유형태']||'') !== ex.소유형태 && ex.소유형태) rowDiffs.push({field:'소유형태', db:dbRow['소유형태']||'—', excel:ex.소유형태});
         if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
         if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
+        if((dbRow.owner?.얼마집_인증||'') !== ex.얼마집_인증 && ex.얼마집_인증) rowDiffs.push({field:'얼마집_인증', db:dbRow.owner?.얼마집_인증||'—', excel:ex.얼마집_인증, target:'owner'});
+        if((dbRow.owner?.얼마집_인증일||'') !== ex.얼마집_인증일 && ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:dbRow.owner?.얼마집_인증일||'—', excel:ex.얼마집_인증일, target:'owner'});
         if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
       });
       if(diffs.length) results.dataUpdate.push({ 등기고유번호:uid, dbs, exs, diffs });
@@ -2178,7 +2212,7 @@ async function handleRosterImport(event) {
     const dbRows = [];
     for(let i=0; i<allPropCodes.length; i+=500) {
       const {data:chunk} = await _sb.from('registration')
-        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,거주구분,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
+        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,거주구분,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호,얼마집_인증,얼마집_인증일)')
         .in('부동산코드', allPropCodes.slice(i,i+500)).eq('is_current', true);
       if(chunk) dbRows.push(...chunk);
     }
@@ -2388,10 +2422,12 @@ async function applySelectedChanges() {
       for(const {dbRow, ex, diffs} of item.diffs) {
         const ownerUpd={}, regUpd={};
         diffs.forEach(d => {
-          if(d.field==='소유형태') regUpd.소유형태=d.excel;
-          if(d.field==='등기유형') regUpd.등기유형=d.excel;
-          if(d.field==='거주구분') regUpd.거주구분=d.excel;
-          if(d.field==='연번')     regUpd.연번=d.excel;
+          if(d.field==='소유형태')    regUpd.소유형태=d.excel;
+          if(d.field==='등기유형')    regUpd.등기유형=d.excel;
+          if(d.field==='거주구분')    regUpd.거주구분=d.excel;
+          if(d.field==='연번')        regUpd.연번=d.excel;
+          if(d.field==='얼마집_인증') ownerUpd.얼마집_인증=d.excel;
+          if(d.field==='얼마집_인증일') ownerUpd.얼마집_인증일=d.excel;
         });
         if(Object.keys(ownerUpd).length) await _sb.from('owner').update(ownerUpd).eq('id', dbRow.owner_id);
         if(Object.keys(regUpd).length)   await _sb.from('registration').update(regUpd).eq('부동산코드',dbRow['부동산코드']).eq('owner_id',dbRow.owner_id).eq('is_current',true);
