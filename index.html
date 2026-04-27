@@ -1638,7 +1638,7 @@ async function handlePayImport(event) {
             <td class="mono">${r.연번}</td><td>${r.납부자}</td>
             <td class="mono" style="color:var(--green)">${r.금액.toLocaleString()}원</td>
             <td class="mono">${r.납부일자}</td><td>${r.회차}</td><td class="mono">${r.입금계좌||'—'}</td>
-          </tr>`).join('')}${parsed.length>50?`<tr><td colspan="6" style="text-align:center;color:var(--text3)">... 외 ${parsed.length-50}건</td></tr>`:''}</tbody>
+          </tr>`).join('')}' + (parsed.length>50 ? '<tr><td colspan="6" style="text-align:center;color:var(--text3)">... 외 '+(parsed.length-50)+'건</td></tr>' : '') + '</tbody>
         </table></div>
         <div style="display:flex;gap:10px;margin-top:16px">
           <button class="btn btn-blue" onclick="doPayImport(window._importData)">✅ ${parsed.length}건 DB에 저장</button>
