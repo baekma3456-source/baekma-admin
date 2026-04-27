@@ -605,7 +605,7 @@ async function loadDashboardData() {
     const [allYeonbun, allProps, allYP, submittedList] = await Promise.all([
       fetchAll('yeonbun','연번',[['is_active',true]]),
       fetchAll('property','부동산코드,단지,부동산유형',[]),
-      fetchAll('yeonbun_property','연번,부동산코드',[]),
+      fetchAll('registration','연번,부동산코드',[]),
       fetchAll('consent','연번',[['차수',roundNo],['상태','제출']])
     ]);
     const activeSet = new Set(allYeonbun.map(y=>y['연번']));
@@ -672,7 +672,7 @@ async function openDanjiModal(danji, roundNo) {
     const groupList=[...groupSet].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b); if(!isNaN(an)&&!isNaN(bn))return an-bn; return a.localeCompare(b,'ko');});
     const allCodes=allProps.map(p=>p['부동산코드']);
     let allYP=[];
-    for(let i=0;i<allCodes.length;i+=500){const {data}=await _sb.from('yeonbun_property').select('연번,부동산코드').in('부동산코드',allCodes.slice(i,i+500)); if(data)allYP=allYP.concat(data);}
+    for(let i=0;i<allCodes.length;i+=500){const {data}=await _sb.from('registration').select('연번,부동산코드').in('부동산코드',allCodes.slice(i,i+500)); if(data)allYP=allYP.concat(data);}
     let activeYeonbuns=new Set();
     let from=0; while(true){const {data:chunk}=await _sb.from('yeonbun').select('연번').eq('is_active',true).range(from,from+999); if(!chunk||chunk.length===0)break; chunk.forEach(y=>activeYeonbuns.add(y['연번'])); if(chunk.length<1000)break; from+=1000;}
     let submittedSet=new Set();
@@ -867,11 +867,11 @@ async function doOwnerSearch(resetPage = true) {
         renderOwnerTable([]);
         return;
       }
-      // 2) 해당 부동산코드의 yeonbun_owner 전체 조회 (500개씩 청크)
+      // 2) 해당 부동산코드의 registration 전체 조회 (500개씩 청크)
       for(let i=0; i<propCodes.length; i+=500) {
         const chunk = propCodes.slice(i, i+500);
-        let q = _sb.from('yeonbun_owner')
-          .select('연번,부번,대표소유주,소유형태,owner_id,owner:owner_id(id,이름,전화번호,거주구분),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+        let q = _sb.from('registration')
+          .select('연번,부번,대표소유주,소유형태,거주구분,owner_id,owner:owner_id(id,이름,전화번호),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
           .in('부동산코드', chunk)
           .order('부동산코드', {ascending:true});
         const {data} = await q;
@@ -880,22 +880,22 @@ async function doOwnerSearch(resetPage = true) {
     } else {
       // 단지 미선택 — 키워드 또는 전체 조회
       if (keyword && (ownerSearchType==='이름'||ownerSearchType==='전화번호')) {
-        let ownerQuery = _sb.from('owner').select('id,이름,전화번호,거주구분').limit(300);
+        let ownerQuery = _sb.from('owner').select('id,이름,전화번호').limit(300);
         if (ownerSearchType==='이름') ownerQuery=ownerQuery.ilike('이름',`%${keyword}%`);
         else ownerQuery=ownerQuery.ilike('전화번호',`%${keyword}%`);
         const {data:oRows}=await ownerQuery;
         if(oRows&&oRows.length>0){
           for(const o of oRows){
-            const {data:yo}=await _sb.from('yeonbun_owner')
-              .select('연번,부번,대표소유주,소유형태,property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+            const {data:yo}=await _sb.from('registration')
+              .select('연번,부번,대표소유주,소유형태,거주구분,property:부동산코드(부동산코드,단지,동,호,부동산유형)')
               .eq('owner_id',o.id);
             if(yo) yo.forEach(y=>rows.push({...y,owner:o}));
           }
         }
       } else {
         // 연번/부동산ID 검색 또는 전체
-        let q = _sb.from('yeonbun_owner')
-          .select('연번,부번,대표소유주,소유형태,owner:owner_id(id,이름,전화번호,거주구분),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
+        let q = _sb.from('registration')
+          .select('연번,부번,대표소유주,소유형태,거주구분,owner:owner_id(id,이름,전화번호),property:부동산코드(부동산코드,단지,동,호,부동산유형)')
           .order('연번',{ascending:true});
         if (keyword && ownerSearchType==='연번' && /^\d+$/.test(keyword)) {
           q = q.eq('연번', parseInt(keyword));
@@ -912,7 +912,7 @@ async function doOwnerSearch(resetPage = true) {
     }
 
     // 거주구분 필터
-    if (ownerFilters.거주구분.length) rows=rows.filter(r=>ownerFilters.거주구분.includes(r.owner?.거주구분));
+    if (ownerFilters.거주구분.length) rows=rows.filter(r=>ownerFilters.거주구분.includes(r['거주구분']));
 
     // 동의서 차수 필터
     const consentFilterKeys = Object.keys(ownerFilters.consent).map(Number).filter(n=>ownerFilters.consent[n]);
@@ -987,7 +987,7 @@ async function renderOwnerTable(rows, total, totalPages) {
     (async()=>{
       let all=[];
       for(let i=0;i<ynNums.length;i+=500){
-        const {data}=await _sb.from('yeonbun_property').select('연번').in('연번',ynNums.slice(i,i+500));
+        const {data}=await _sb.from('registration').select('연번').in('연번',ynNums.slice(i,i+500));
         if(data) all=all.concat(data);
       }
       return all;
@@ -1065,7 +1065,7 @@ async function renderOwnerTable(rows, total, totalPages) {
                 ${(ynPropCountMap[r['연번']]||1)>1?'<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>':''}
               </td>
               <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${r.owner?.id||''}')" title="더블클릭 수정">${r.owner?.전화번호||'—'}</span></td>
-              <td><span ondblclick="startInlineEdit(this,'거주구분','${r.owner?.id||''}')" title="더블클릭 수정">${r.owner?.거주구분||'—'}</span></td>
+              <td><span ondblclick="startInlineEdit(this,'거주구분','${r["연번"]||''}','${r["property"]?.부동산코드||''}','${r.owner?.id||''}') title="더블클릭 수정">${r['거주구분']||'—'}</span></td>
               <td style="font-size:12px">${shihaengMap[r['연번']]||'—'}</td>
               ${consentCells(r['연번'])}
             </tr>`).join('')}
@@ -1107,7 +1107,7 @@ async function renderOwnerTable(rows, total, totalPages) {
               <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.owner?.전화번호||'—'}</span></td>
               <td class="mono" style="font-size:11px">${propCodes.slice(0,3).join(', ')}${propCodes.length>3?'…':''}</td>
               <td>${rs[0]?.property?.단지||'—'}</td>
-              <td><span ondblclick="startInlineEdit(this,'거주구분','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.owner?.거주구분||'—'}</span></td>
+              <td><span ondblclick="startInlineEdit(this,'거주구분','${rep?.['연번']||''}','${r?.['부동산코드']||''}','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.['거주구분']||'—'}</span></td>
               <td style="font-size:12px">${shihaengMap[yn]||'—'}</td>
               ${consentCells(yn)}
             </tr>`;
@@ -1132,8 +1132,10 @@ function quickConsentEdit(yeonbun, round, roundName, status, method) {
 }
 
 // 인라인 수정 — 더블클릭 시 input으로 전환
-async function startInlineEdit(el, field, ownerId) {
-  if(!ownerId||ownerId==='undefined'||ownerId==='null'){showToast('소유주 ID를 찾을 수 없습니다.','error');return;}
+async function startInlineEdit(el, field, ownerId, yeonbun, pidOrOwnerId) {
+  // field='거주구분': registration 업데이트(연번+부동산코드), field='전화번호': owner 업데이트
+  const resolvedId = field==='거주구분' ? pidOrOwnerId : ownerId;
+  if(!resolvedId||resolvedId==='undefined'||resolvedId==='null'){showToast('ID를 찾을 수 없습니다.','error');return;}
   const orig = el.textContent.trim();
   const td = el.parentElement;
 
@@ -1155,18 +1157,23 @@ async function startInlineEdit(el, field, ownerId) {
 
   const save = async () => {
     const newVal = inputEl.value.trim() || null;
-    const update = {};
-    update[field==='거주구분'?'거주구분':'전화번호'] = newVal;
-    const {error} = await _sb.from('owner').update(update).eq('id',ownerId);
-    if(error){ showToast('저장 실패: '+error.message,'error'); td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}')" title="더블클릭으로 수정">${orig}</span>`; return; }
+    let saveError;
+    if(field==='거주구분') {
+      let q = _sb.from('registration').update({거주구분: newVal}).eq('연번', parseInt(yeonbun||0)).eq('부동산코드', resolvedId);
+      if(ownerId && ownerId!=='undefined') q = q.eq('owner_id', ownerId);
+      ({error:saveError} = await q);
+    } else {
+      ({error:saveError} = await _sb.from('owner').update({전화번호: newVal}).eq('id', resolvedId));
+    }
+    if(saveError){ showToast('저장 실패: '+saveError.message,'error'); td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}','${yeonbun}','${resolvedId}')" title="더블클릭으로 수정">${orig}</span>`; return; }
     showToast(`${field} 저장 완료`,'success');
-    td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}')" title="더블클릭으로 수정">${newVal||'—'}</span>`;
+    td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}','${yeonbun}','${resolvedId}')" title="더블클릭으로 수정">${newVal||'—'}</span>`;
   };
 
   inputEl.addEventListener('blur', save);
   inputEl.addEventListener('keydown', e=>{
     if(e.key==='Enter') { e.preventDefault(); inputEl.blur(); }
-    if(e.key==='Escape') { td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}')" title="더블클릭으로 수정">${orig}</span>`; }
+    if(e.key==='Escape') { td.innerHTML=`<span ondblclick="startInlineEdit(this,'${field}','${ownerId}','${yeonbun}','${resolvedId}')" title="더블클릭으로 수정">${orig}</span>`; }
   });
   inputEl.focus();
   if(inputEl.tagName==='INPUT') inputEl.select();
@@ -1201,7 +1208,7 @@ async function loadModalTab(idx) {
 async function loadOwnerBasicTab(ownerId,yeonbun,body){
   const [{data:o},{data:yoList},{data:yb}]=await Promise.all([
     _sb.from('owner').select('*').eq('id',ownerId).single(),
-    _sb.from('yeonbun_owner').select('연번,부번,대표소유주,소유형태,지분별토지,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적)').eq('owner_id',ownerId),
+    _sb.from('registration').select('연번,부번,대표소유주,소유형태,지분별토지,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적)').eq('owner_id',ownerId),
     _sb.from('yeonbun').select('*').eq('연번',yeonbun).single()
   ]);
   document.getElementById('modal-owner-name').textContent=o?.이름||'—';
@@ -1216,7 +1223,7 @@ async function loadOwnerBasicTab(ownerId,yeonbun,body){
           <span class="kv-key">생년월일</span><span class="kv-val">${o?.생년월일_사업자번호||'—'}</span>
           <span class="kv-key">성별</span><span class="kv-val">${o?.성별||'—'}</span>
           <span class="kv-key">전화번호</span><span class="kv-val mono">${o?.전화번호||'—'}</span>
-          <span class="kv-key">거주구분</span><span class="kv-val">${o?.거주구분||'—'}</span>
+          <span class="kv-key">거주구분</span><span class="kv-val">${yoList?.[0]?.['거주구분']||'—'}</span>
           <span class="kv-key">등기상 주소</span><span class="kv-val" style="font-size:12px">${o?.등기상주소||'—'}</span>
           <span class="kv-key">실거주지</span><span class="kv-val" style="font-size:12px">${o?.실거주지||'—'}</span>
           <span class="kv-key">얼마집 인증</span><span class="kv-val">${o?.얼마집_인증||'—'} ${o?.얼마집_인증일||''}</span>
@@ -1371,7 +1378,7 @@ async function saveConsentEdit(){
 }
 
 async function openOwnerByYeonbun(yeonbun){
-  const {data}=await _sb.from('yeonbun_owner').select('owner_id').eq('연번',yeonbun).eq('대표소유주',true).single();
+  const {data}=await _sb.from('registration').select('owner_id').eq('연번',yeonbun).eq('대표소유주',true).single();
   if(data) openOwnerModal(data.owner_id,yeonbun);
 }
 
@@ -1430,7 +1437,7 @@ async function loadPaySummary(){
 
     // 단지별 집계
     const [allYP,allProps]=await Promise.all([
-      fetchAll('yeonbun_property','연번,부동산코드',[]),
+      fetchAll('registration','연번,부동산코드',[]),
       fetchAll('property','부동산코드,단지',[])
     ]);
     const codeToD={};
@@ -1538,7 +1545,7 @@ async function loadPayList() {
     // 현재 소유주 납부가 있는 연번만 "납부완료"로 처리
     const paidYNs=Object.keys(payMap).filter(yn=>payMap[yn].현재건수>0).map(Number);
     const repNameMap={};
-    for(let i=0;i<paidYNs.length;i+=500){ const {data}=await _sb.from('yeonbun_owner').select('연번,owner:owner_id(이름)').in('연번',paidYNs.slice(i,i+500)).eq('대표소유주',true); (data||[]).forEach(r=>{repNameMap[r['연번']]=r.owner?.이름||'—';}); }
+    for(let i=0;i<paidYNs.length;i+=500){ const {data}=await _sb.from('registration').select('연번,owner:owner_id(이름)').in('연번',paidYNs.slice(i,i+500)).eq('대표소유주',true); (data||[]).forEach(r=>{repNameMap[r['연번']]=r.owner?.이름||'—';}); }
 
     const paidSet=new Set(paidYNs);
     let rows=[];
@@ -1557,11 +1564,11 @@ async function loadPayList() {
       if(keyword){
         const isNum=/^\d+$/.test(keyword);
         if(isNum){unpaidNums=unpaidNums.filter(yn=>String(yn)===keyword);}
-        else{const {data:oList}=await _sb.from('owner').select('id').ilike('이름',`%${keyword}%`); if(oList?.length){const {data:yoList}=await _sb.from('yeonbun_owner').select('연번').in('owner_id',oList.map(o=>o.id)); const ms=new Set((yoList||[]).map(y=>y['연번'])); unpaidNums=unpaidNums.filter(yn=>ms.has(yn));}else{unpaidNums=[];}}
+        else{const {data:oList}=await _sb.from('owner').select('id').ilike('이름',`%${keyword}%`); if(oList?.length){const {data:yoList}=await _sb.from('registration').select('연번').in('owner_id',oList.map(o=>o.id)); const ms=new Set((yoList||[]).map(y=>y['연번'])); unpaidNums=unpaidNums.filter(yn=>ms.has(yn));}else{unpaidNums=[];}}
       }
       const slice=unpaidNums.slice(0,500);
       const unm={};
-      for(let i=0;i<slice.length;i+=500){const {data}=await _sb.from('yeonbun_owner').select('연번,owner:owner_id(이름)').in('연번',slice.slice(i,i+500)).eq('대표소유주',true); (data||[]).forEach(r=>{unm[r['연번']]=r.owner?.이름||'—';}); }
+      for(let i=0;i<slice.length;i+=500){const {data}=await _sb.from('registration').select('연번,owner:owner_id(이름)').in('연번',slice.slice(i,i+500)).eq('대표소유주',true); (data||[]).forEach(r=>{unm[r['연번']]=r.owner?.이름||'—';}); }
       rows=rows.concat(slice.map(yn=>({연번:yn,이름:unm[yn]||'—',현재금액:0,현재건수:0,이전금액:0,이전건수:0,납부:false})));
     }
     rows.sort((a,b)=>a.연번-b.연번);
@@ -1650,7 +1657,7 @@ async function doPayImport(parsed) {
     const ynNums=[...new Set(parsed.map(r=>r.연번))];
     const ownerMap={};
     for(let i=0;i<ynNums.length;i+=500){
-      const {data}=await _sb.from('yeonbun_owner').select('연번,owner_id').in('연번',ynNums.slice(i,i+500)).eq('대표소유주',true);
+      const {data}=await _sb.from('registration').select('연번,owner_id').in('연번',ynNums.slice(i,i+500)).eq('대표소유주',true);
       (data||[]).forEach(r=>{ownerMap[r['연번']]=r['owner_id'];});
     }
     const inserts=parsed.map(r=>({
@@ -1715,7 +1722,7 @@ async function printAllReceipts() {
   const ynNums=Object.keys(ynMap).map(Number);
   const ynPidMap={};
   for(let i=0;i<ynNums.length;i+=500){
-    const {data}=await _sb.from('yeonbun_property').select('연번,부동산코드').in('연번',ynNums.slice(i,i+500));
+    const {data}=await _sb.from('registration').select('연번,부동산코드').in('연번',ynNums.slice(i,i+500));
     (data||[]).forEach(r=>{ if(!ynPidMap[r['연번']])ynPidMap[r['연번']]=r['부동산코드']; });
   }
   // 부동산코드 → 동/호 조회
@@ -1866,7 +1873,7 @@ async function loadActivityList() {
     const ynNums=[...new Set(logs.map(l=>l['연번']).filter(Boolean))];
     const nameMap={};
     for(let i=0;i<ynNums.length;i+=500){
-      const {data}=await _sb.from('yeonbun_owner').select('연번,owner:owner_id(이름)').in('연번',ynNums.slice(i,i+500)).eq('대표소유주',true);
+      const {data}=await _sb.from('registration').select('연번,owner:owner_id(이름)').in('연번',ynNums.slice(i,i+500)).eq('대표소유주',true);
       (data||[]).forEach(r=>{nameMap[r['연번']]=r.owner?.이름||'—';});
     }
 
@@ -2032,10 +2039,13 @@ function openAddStaffGuide() {
 
 // ── SQL 사전 안내 팝업 ──
 function showSqlGuide() {
-  const sql = `-- ① yeonbun_owner 테이블에 컬럼 2개 추가
-ALTER TABLE yeonbun_owner
-  ADD COLUMN IF NOT EXISTS is_current BOOLEAN DEFAULT true,
-  ADD COLUMN IF NOT EXISTS 소유종료일 DATE;
+  const sql = `-- ✅ DB v2.0 마이그레이션 완료 (2026-04-27)
+-- yeonbun_owner + yeonbun_property → registration 통합 완료
+-- 아래 SQL은 참고용입니다. 이미 적용되었습니다.
+
+-- registration 테이블 (신규, v2.0)
+-- 연번 × 부동산코드 × owner_id 의 3자 조합
+-- is_current, 소유종료일, 등기상주소, 거주구분 포함
 
 -- ② 소유주 변경 이력 테이블 생성
 CREATE TABLE IF NOT EXISTS owner_change_log (
@@ -2162,7 +2172,7 @@ async function handleRosterImport(event) {
     let dbFrom = 0;
     while(true) {
       const {data:chunk, error} = await _sb
-        .from('yeonbun_owner')
+        .from('registration')
         .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
         .eq('is_current', true)   // 현재 소유주만 비교 (is_current 컬럼 없으면 전체)
         .range(dbFrom, dbFrom+999);
@@ -2177,7 +2187,7 @@ async function handleRosterImport(event) {
       dbFrom = 0;
       while(true) {
         const {data:chunk} = await _sb
-          .from('yeonbun_owner')
+          .from('registration')
           .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
           .range(dbFrom, dbFrom+999);
         if(!chunk || chunk.length===0) break;
@@ -2344,8 +2354,8 @@ async function handleRosterImport(event) {
           </table>
         </div>
         <div style="padding:10px 12px;background:var(--yellow-soft);border-radius:8px;margin-top:10px;font-size:12px;color:var(--yellow)">
-          ⚠️ <strong>소유주 변경</strong>의 경우: 기존 yeonbun_owner 행은 <code>is_current=false + 소유종료일</code>로 보존되고,
-          새 소유주가 owner 테이블에 추가(또는 기존 매칭)된 뒤 yeonbun_owner에 신규 행으로 삽입됩니다.
+          ⚠️ <strong>소유주 변경</strong>의 경우: 기존 registration 행은 <code>is_current=false + 소유종료일</code>로 보존되고,
+          새 소유주가 owner 테이블에 추가(또는 기존 매칭)된 뒤 registration에 신규 행으로 삽입됩니다.
           변경 이력은 <code>owner_change_log</code>에 자동 기록됩니다.
         </div>
       </div>` : ''}
@@ -2432,8 +2442,8 @@ async function applySelectedChanges() {
         ? rawDate.replace(/\./g, '-').replace(/[^0-9\-]/g, '').slice(0, 10) || null
         : null;
 
-      // 1) 기존 yeonbun_owner 행: is_current=false, 소유종료일 기록
-      await _sb.from('yeonbun_owner')
+      // 1) 기존 registration 행: is_current=false, 소유종료일 기록
+      await _sb.from('registration')
         .update({ is_current: false, 소유종료일 })
         .eq('연번', c.db.연번)
         .eq('부동산코드', c.부동산ID)
@@ -2462,8 +2472,8 @@ async function applySelectedChanges() {
         newOwnerId = inserted.id;
       }
 
-      // 3) 새 yeonbun_owner 행 삽입 (등기원인일 포함)
-      await _sb.from('yeonbun_owner').insert({
+      // 3) 새 registration 행 삽입 (등기원인일 포함)
+      await _sb.from('registration').insert({
         연번:       c.excel.연번,
         부동산코드: c.부동산ID,
         owner_id:   newOwnerId,
@@ -2532,7 +2542,7 @@ async function applySelectedChanges() {
         await _sb.from('owner').update(ownerUpdate).eq('id', c.db.owner_id);
       }
       if(Object.keys(yoUpdate).length) {
-        await _sb.from('yeonbun_owner').update(yoUpdate)
+        await _sb.from('registration').update(yoUpdate)
           .eq('연번', c.db.연번)
           .eq('부동산코드', c.부동산ID)
           .eq('owner_id', c.db.owner_id);
