@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.15</title>
+<title>백마마을 재건축 — 관리자앱 v2.16</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.15</div>
+      <div class="site-sub">관리자앱 v2.16</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -2110,8 +2110,8 @@ function parseExcelRows(rawData) {
       생년월일:     String(r[12] || '').trim(),
       성별:         String(r[11] || '').trim(),
       전화번호:     '',
-      얼마집_인증:  String(r[8]  || '').trim(),
-      얼마집_인증일:String(r[9]  || '').trim(),
+      얼마집_인증:  (() => { const v = String(r[8]||'').trim(); return v === 'O' ? 'O' : null; })(),
+      얼마집_인증일:(() => { const v = String(r[9]||'').trim(); return (v && v !== '-') ? v : null; })(),
       소유형태:     String(r[10] || '').trim(),
       등기유형:     String(r[7]  || '').trim(),
       등기원인일:   String(r[20] || '').trim(),
@@ -2157,8 +2157,8 @@ function classifyChanges(dbByProp, exByProp) {
         if((dbRow['소유형태']||'') !== ex.소유형태 && ex.소유형태) rowDiffs.push({field:'소유형태', db:dbRow['소유형태']||'—', excel:ex.소유형태});
         if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
         if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
-        if((dbRow.owner?.얼마집_인증||'') !== ex.얼마집_인증 && ex.얼마집_인증) rowDiffs.push({field:'얼마집_인증', db:dbRow.owner?.얼마집_인증||'—', excel:ex.얼마집_인증, target:'owner'});
-        if((dbRow.owner?.얼마집_인증일||'') !== ex.얼마집_인증일 && ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:dbRow.owner?.얼마집_인증일||'—', excel:ex.얼마집_인증일, target:'owner'});
+        if((dbRow.owner?.얼마집_인증 ?? null) !== ex.얼마집_인증) rowDiffs.push({field:'얼마집_인증', db:dbRow.owner?.얼마집_인증||'—', excel:ex.얼마집_인증??'—', target:'owner'});
+        if((dbRow.owner?.얼마집_인증일 ?? null) !== ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:dbRow.owner?.얼마집_인증일||'—', excel:ex.얼마집_인증일??'—', target:'owner'});
         if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
       });
       if(diffs.length) results.dataUpdate.push({ 등기고유번호:uid, dbs, exs, diffs });
