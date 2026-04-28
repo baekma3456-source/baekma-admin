@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.21</title>
+<title>백마마을 재건축 — 관리자앱 v2.22</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.21</div>
+      <div class="site-sub">관리자앱 v2.22</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -567,11 +567,13 @@ async function renderDashboard() {
   const { data: rounds } = await _sb.from('consent_round').select('*').order('차수');
   consentRounds = rounds || [];
   const defaultRound = consentRounds.length ? consentRounds[consentRounds.length-1]['차수'] : 1;
-  const [{ count: yeonbunTotal },{ count: sedaeTotal },{ count: ownerTotal }] = await Promise.all([
+  const [{ count: yeonbunTotal },{ count: sedaeTotal }] = await Promise.all([
     _sb.from('yeonbun').select('*',{count:'exact',head:true}).eq('is_active',true),
     _sb.from('property').select('*',{count:'exact',head:true}),
-    _sb.from('owner').select('*',{count:'exact',head:true})
   ]);
+  // 현재 소유자 수 — is_current=true 기준 중복 제거
+  const {data:_ownerRows} = await _sb.from('registration').select('owner_id').eq('is_current',true);
+  const ownerTotal = new Set((_ownerRows||[]).map(r=>r.owner_id)).size;
   document.getElementById('kpi-yeonbun').textContent = (yeonbunTotal||0).toLocaleString();
   document.getElementById('kpi-sedae').textContent = (sedaeTotal||0).toLocaleString();
   document.getElementById('kpi-owner').textContent = (ownerTotal||0).toLocaleString();
@@ -705,11 +707,13 @@ async function renderOwners() {
   if(!consentRounds.length){const {data:rounds}=await _sb.from('consent_round').select('*').order('차수'); consentRounds=rounds||[];}
 
   // 최상단 KPI 조회: 전체연번 / 전체세대수 / 전체소유자수 / 얼마집인증자수
-  const [{count:ownKpiYeonbun},{count:ownKpiSedae},{count:ownKpiOwner}] = await Promise.all([
+  const [{count:ownKpiYeonbun},{count:ownKpiSedae}] = await Promise.all([
     _sb.from('yeonbun').select('*',{count:'exact',head:true}).eq('is_active',true),
     _sb.from('property').select('*',{count:'exact',head:true}),
-    _sb.from('owner').select('*',{count:'exact',head:true}),
   ]);
+  // 현재 소유자 수 — is_current=true 기준 owner_id 중복 제거 (구 소유자 제외)
+  const {data:ownerRows} = await _sb.from('registration').select('owner_id').eq('is_current',true);
+  const ownKpiOwner = new Set((ownerRows||[]).map(r=>r.owner_id)).size;
   // 얼마집 인증자 수 — 사람 기준 중복 제거 (같은 사람이 여러 부동산 인증해도 1명)
   const {data:certRows} = await _sb.from('registration').select('owner_id').eq('얼마집_인증','O').eq('is_current',true);
   const ownKpiCert = new Set((certRows||[]).map(r=>r.owner_id)).size;
