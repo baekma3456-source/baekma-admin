@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.18</title>
+<title>백마마을 재건축 — 관리자앱 v2.17</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.18</div>
+      <div class="site-sub">관리자앱 v2.17</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -2158,7 +2158,7 @@ function classifyChanges(dbByProp, exByProp) {
         if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
         if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
         const db_인증  = (dbRow.owner?.얼마집_인증  === 'O') ? 'O' : null;
-        const db_인증일 = (dbRow.owner?.얼마집_인증일 && dbRow.owner.얼마집_인증일 !== '-' && dbRow.owner.얼마집_인증일 !== '—') ? dbRow.owner.얼마집_인증일 : null;
+        const db_인증일 = (dbRow.owner?.얼마집_인증일 && dbRow.owner.얼마집_인증일 !== '-') ? dbRow.owner.얼마집_인증일 : null;
         if(db_인증  !== ex.얼마집_인증)  rowDiffs.push({field:'얼마집_인증',  db:db_인증 ??'—', excel:ex.얼마집_인증 ??'—', target:'owner'});
         if(db_인증일 !== ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:db_인증일??'—', excel:ex.얼마집_인증일??'—', target:'owner'});
         if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
@@ -2428,8 +2428,8 @@ async function applySelectedChanges() {
           if(d.field==='등기유형')    regUpd.등기유형=d.excel;
           if(d.field==='거주구분')    regUpd.거주구분=d.excel;
           if(d.field==='연번')        regUpd.연번=d.excel;
-          if(d.field==='얼마집_인증') ownerUpd.얼마집_인증=d.excel;
-          if(d.field==='얼마집_인증일') ownerUpd.얼마집_인증일=d.excel;
+          if(d.field==='얼마집_인증')  { if(d.excel === 'O') ownerUpd.얼마집_인증=d.excel; }
+          if(d.field==='얼마집_인증일') { if(d.excel !== null) ownerUpd.얼마집_인증일=d.excel; }
         });
         if(Object.keys(ownerUpd).length) await _sb.from('owner').update(ownerUpd).eq('id', dbRow.owner_id);
         if(Object.keys(regUpd).length)   await _sb.from('registration').update(regUpd).eq('부동산코드',dbRow['부동산코드']).eq('owner_id',dbRow.owner_id).eq('is_current',true);
