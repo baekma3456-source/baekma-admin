@@ -2158,7 +2158,7 @@ function classifyChanges(dbByProp, exByProp) {
         if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
         if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
         const db_인증  = (dbRow.owner?.얼마집_인증  === 'O') ? 'O' : null;
-        const db_인증일 = (dbRow.owner?.얼마집_인증일 && dbRow.owner.얼마집_인증일 !== '-') ? dbRow.owner.얼마집_인증일 : null;
+        const db_인증일 = (dbRow.owner?.얼마집_인증일 && dbRow.owner.얼마집_인증일 !== '-' && dbRow.owner.얼마집_인증일 !== '—') ? dbRow.owner.얼마집_인증일 : null;
         if(db_인증  !== ex.얼마집_인증)  rowDiffs.push({field:'얼마집_인증',  db:db_인증 ??'—', excel:ex.얼마집_인증 ??'—', target:'owner'});
         if(db_인증일 !== ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:db_인증일??'—', excel:ex.얼마집_인증일??'—', target:'owner'});
         if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
