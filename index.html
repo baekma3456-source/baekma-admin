@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.19</title>
+<title>백마마을 재건축 — 관리자앱 v2.20</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -222,7 +222,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.19</div>
+      <div class="site-sub">관리자앱 v2.20</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -709,7 +709,7 @@ async function renderOwners() {
     _sb.from('yeonbun').select('*',{count:'exact',head:true}).eq('is_active',true),
     _sb.from('property').select('*',{count:'exact',head:true}),
     _sb.from('owner').select('*',{count:'exact',head:true}),
-    _sb.from('owner').select('*',{count:'exact',head:true}).eq('얼마집_인증','O'),
+    _sb.from('registration').select('*',{count:'exact',head:true}).eq('얼마집_인증','O').eq('is_current',true),
   ]);
 
   // 단지/동 목록
@@ -1223,12 +1223,13 @@ async function loadModalTab(idx) {
 async function loadOwnerBasicTab(ownerId,yeonbun,body){
   const [{data:o},{data:yoList},{data:yb}]=await Promise.all([
     _sb.from('owner').select('*').eq('id',ownerId).single(),
-    _sb.from('registration').select('연번,부번,대표소유주,소유형태,지분별토지,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적)').eq('owner_id',ownerId),
+    _sb.from('registration').select('연번,부번,대표소유주,소유형태,지분별토지,얼마집_인증,얼마집_인증일,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적)').eq('owner_id',ownerId),
     _sb.from('yeonbun').select('*').eq('연번',yeonbun).single()
   ]);
   document.getElementById('modal-owner-name').textContent=o?.이름||'—';
   document.getElementById('modal-owner-sub').textContent=`연번 ${yeonbun} · ${yb?.시행방식||''}`;
   const props=(yoList||[]).map(y=>y.property).filter(Boolean);
+  const reg=(yoList||[]).find(y=>y['연번']===yeonbun) || yoList?.[0];
   body.innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div>
@@ -1241,7 +1242,7 @@ async function loadOwnerBasicTab(ownerId,yeonbun,body){
           <span class="kv-key">거주구분</span><span class="kv-val">${yoList?.[0]?.['거주구분']||'—'}</span>
           <span class="kv-key">등기상 주소</span><span class="kv-val" style="font-size:12px">${o?.등기상주소||'—'}</span>
           <span class="kv-key">실거주지</span><span class="kv-val" style="font-size:12px">${o?.실거주지||'—'}</span>
-          <span class="kv-key">얼마집 인증</span><span class="kv-val">${o?.얼마집_인증||'—'} ${o?.얼마집_인증일||''}</span>
+          <span class="kv-key">얼마집 인증</span><span class="kv-val">${reg?.얼마집_인증||'—'} ${reg?.얼마집_인증일||''}</span>
         </div>
       </div>
       <div>
@@ -2157,10 +2158,10 @@ function classifyChanges(dbByProp, exByProp) {
         if((dbRow['소유형태']||'') !== ex.소유형태 && ex.소유형태) rowDiffs.push({field:'소유형태', db:dbRow['소유형태']||'—', excel:ex.소유형태});
         if((dbRow['등기유형']||'') !== ex.등기유형 && ex.등기유형) rowDiffs.push({field:'등기유형', db:dbRow['등기유형']||'—', excel:ex.등기유형});
         if((dbRow['거주구분']||'') !== ex.거주구분 && ex.거주구분) rowDiffs.push({field:'거주구분', db:dbRow['거주구분']||'—', excel:ex.거주구분});
-        const db_인증  = (dbRow.owner?.얼마집_인증  === 'O') ? 'O' : null;
-        const db_인증일 = (dbRow.owner?.얼마집_인증일 && dbRow.owner.얼마집_인증일 !== '-' && dbRow.owner.얼마집_인증일 !== '—') ? dbRow.owner.얼마집_인증일 : null;
-        if(db_인증  !== ex.얼마집_인증)  rowDiffs.push({field:'얼마집_인증',  db:db_인증 ??'—', excel:ex.얼마집_인증 ??'—', target:'owner'});
-        if(db_인증일 !== ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:db_인증일??'—', excel:ex.얼마집_인증일??'—', target:'owner'});
+        const db_인증  = (dbRow.얼마집_인증  === 'O') ? 'O' : null;
+        const db_인증일 = (dbRow.얼마집_인증일 && dbRow.얼마집_인증일 !== '-' && dbRow.얼마집_인증일 !== '—') ? dbRow.얼마집_인증일 : null;
+        if(db_인증  !== ex.얼마집_인증)  rowDiffs.push({field:'얼마집_인증',  db:db_인증 ??'—', excel:ex.얼마집_인증 ??'—', target:'reg'});
+        if(db_인증일 !== ex.얼마집_인증일) rowDiffs.push({field:'얼마집_인증일', db:db_인증일??'—', excel:ex.얼마집_인증일??'—', target:'reg'});
         if(rowDiffs.length) diffs.push({ dbRow, ex, diffs: rowDiffs });
       });
       if(diffs.length) results.dataUpdate.push({ 등기고유번호:uid, dbs, exs, diffs });
@@ -2214,7 +2215,7 @@ async function handleRosterImport(event) {
     const dbRows = [];
     for(let i=0; i<allPropCodes.length; i+=500) {
       const {data:chunk} = await _sb.from('registration')
-        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,거주구분,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호,얼마집_인증,얼마집_인증일)')
+        .select('연번,부번,부동산코드,소유형태,등기유형,등기원인일,거주구분,얼마집_인증,얼마집_인증일,is_current,owner_id,owner:owner_id(id,이름,생년월일_사업자번호,성별,전화번호)')
         .in('부동산코드', allPropCodes.slice(i,i+500)).eq('is_current', true);
       if(chunk) dbRows.push(...chunk);
     }
@@ -2428,8 +2429,8 @@ async function applySelectedChanges() {
           if(d.field==='등기유형')    regUpd.등기유형=d.excel;
           if(d.field==='거주구분')    regUpd.거주구분=d.excel;
           if(d.field==='연번')        regUpd.연번=d.excel;
-          if(d.field==='얼마집_인증')  { if(d.excel === 'O') ownerUpd.얼마집_인증=d.excel; }
-          if(d.field==='얼마집_인증일') { if(d.excel !== null) ownerUpd.얼마집_인증일=d.excel; }
+          if(d.field==='얼마집_인증')  regUpd.얼마집_인증=d.excel;
+          if(d.field==='얼마집_인증일') regUpd.얼마집_인증일=d.excel;
         });
         if(Object.keys(ownerUpd).length) await _sb.from('owner').update(ownerUpd).eq('id', dbRow.owner_id);
         if(Object.keys(regUpd).length)   await _sb.from('registration').update(regUpd).eq('부동산코드',dbRow['부동산코드']).eq('owner_id',dbRow.owner_id).eq('is_current',true);
