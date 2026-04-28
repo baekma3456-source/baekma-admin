@@ -1287,7 +1287,7 @@ async function loadModalTab(idx) {
 async function loadOwnerBasicTab(ownerId,yeonbun,body){
   const [{data:o},{data:yoList},{data:yb}]=await Promise.all([
     _sb.from('owner').select('*').eq('id',ownerId).single(),
-    _sb.from('registration').select('연번,부번,대표소유주,소유형태,지분별토지,얼마집_인증,얼마집_인증일,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적)').eq('owner_id',ownerId),
+    _sb.from('registration').select('연번,부번,대표소유주,소유형태,지분별토지,거주구분,등기상주소,얼마집_인증,얼마집_인증일,property:부동산코드(부동산코드,단지,동,호,부동산유형,전유면적,소유지번)').eq('owner_id',ownerId),
     _sb.from('yeonbun').select('*').eq('연번',yeonbun).single()
   ]);
   document.getElementById('modal-owner-name').textContent=o?.이름||'—';
@@ -1303,8 +1303,8 @@ async function loadOwnerBasicTab(ownerId,yeonbun,body){
           <span class="kv-key">생년월일</span><span class="kv-val">${o?.생년월일_사업자번호||'—'}</span>
           <span class="kv-key">성별</span><span class="kv-val">${o?.성별||'—'}</span>
           <span class="kv-key">전화번호</span><span class="kv-val mono">${o?.전화번호||'—'}</span>
-          <span class="kv-key">거주구분</span><span class="kv-val">${yoList?.[0]?.['거주구분']||'—'}</span>
-          <span class="kv-key">등기상 주소</span><span class="kv-val" style="font-size:12px">${o?.등기상주소||'—'}</span>
+          <span class="kv-key">거주구분</span><span class="kv-val">${reg?.['거주구분']||'—'}</span>
+          <span class="kv-key">등기상 주소</span><span class="kv-val" style="font-size:12px">${reg?.등기상주소||'—'}</span>
           <span class="kv-key">실거주지</span><span class="kv-val" style="font-size:12px">${o?.실거주지||'—'}</span>
           <span class="kv-key">얼마집 인증</span><span class="kv-val">${reg?.얼마집_인증||'—'} ${reg?.얼마집_인증일||''}</span>
         </div>
@@ -1314,7 +1314,7 @@ async function loadOwnerBasicTab(ownerId,yeonbun,body){
         <div class="detail-kv" style="margin-bottom:12px">
           <span class="kv-key">연번</span><span class="kv-val mono">${yeonbun}</span>
           <span class="kv-key">시행방식</span><span class="kv-val">${yb?.시행방식||'—'}</span>
-          <span class="kv-key">소유지번</span><span class="kv-val" style="font-size:12px">${yb?.소유지번||'—'}</span>
+          <span class="kv-key">소유지번</span><span class="kv-val" style="font-size:12px">${reg?.property?.소유지번||'—'}</span>
         </div>
         <div class="card-title">보유 부동산</div>
         ${(yoList||[]).filter(y=>y.property).map(y=>`
