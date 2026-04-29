@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.31</title>
+<title>백마마을 재건축 — 관리자앱 v2.32</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -209,7 +209,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
     <div class="login-logo">
       <div class="logo-mark">🏘️</div>
       <h1>백마마을 통합재건축 주민대표단</h1>
-      <p>관리자 전용 시스템 v2.31</p>
+      <p>관리자 전용 시스템 v2.32</p>
     </div>
     <div class="form-group"><label>이메일</label><input type="email" id="login-email" placeholder="이메일" autocomplete="email"></div>
     <div class="form-group"><label>비밀번호</label><input type="password" id="login-pw" placeholder="비밀번호" autocomplete="current-password"></div>
@@ -223,7 +223,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.31</div>
+      <div class="site-sub">관리자앱 v2.32</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -1950,38 +1950,44 @@ async function printAllReceipts() {
     (data||[]).forEach(p=>{ pidAddrMap[p['부동산코드']]={dong:p['동'],ho:p['호']}; });
   }
 
-  // 누적 납부총액
+  // 누적 납부총액 (연번별 전 회차 합산)
   const {data:allPays}=await _sb.from('payment').select('연번,금액').in('연번',ynNums);
   const cumMap={};
   (allPays||[]).forEach(p=>{ cumMap[p['연번']]=(cumMap[p['연번']]||0)+(p['금액']||0); });
-
-  // 연번별 합산
-  const ynMap={};
-  payments.forEach(p=>{
-    if(!ynMap[p['연번']]) ynMap[p['연번']]={금액:0,납부일자:'—',메모:''};
-    ynMap[p['연번']].금액+=(p['금액']||0);
-    if(p['납부일자']) ynMap[p['연번']].납부일자=p['납부일자'];
-    if(!ynMap[p['연번']].메모&&p['메모']) ynMap[p['연번']].메모=p['메모'];
-  });
 
   const today=new Date();
   const issueDate=`${today.getFullYear()}년 ${String(today.getMonth()+1).padStart(2,'0')}월 ${String(today.getDate()).padStart(2,'0')}일`;
   const roundName=roundInfo?.['이름']||roundNo+'회차';
 
-  const sorted=[...ynNums].sort((a,b)=>(ynPidMap[a]||'zzz').localeCompare(ynPidMap[b]||'zzz','ko'));
+  // 납부일자별 개별 영수증 레코드 생성 (합산하지 않음)
+  // 같은 연번+같은 날짜라도 별도 행이면 별도 영수증
+  const records = payments.map(p=>({
+    연번: p['연번'],
+    금액: p['금액']||0,
+    납부일자: p['납부일자']||'—',
+    메모: p['메모']||''
+  }));
 
-  const fields=sorted.map(yn=>{
-    const d=ynMap[yn];
-    const pid=ynPidMap[yn]||'';
-    const reg=regMap[yn]||{대표:'—',전체:[]};
+  // 부동산코드 기준 정렬 (같은 부동산코드면 납부일자 오름차순)
+  records.sort((a,b)=>{
+    const pa=ynPidMap[a.연번]||'zzz';
+    const pb=ynPidMap[b.연번]||'zzz';
+    const cmp=pa.localeCompare(pb,'ko');
+    if(cmp!==0) return cmp;
+    return (a.납부일자||'').localeCompare(b.납부일자||'');
+  });
+
+  const fields=records.map(p=>{
+    const pid=ynPidMap[p.연번]||'';
+    const reg=regMap[p.연번]||{대표:'—',전체:[]};
     return {
-      uid: makeUID(roundNo, d.납부일자, pid),
-      ownerName: resolveOwnerName(d.메모, reg.대표, reg.전체),
+      uid: makeUID(roundNo, p.납부일자, pid),
+      ownerName: resolveOwnerName(p.메모, reg.대표, reg.전체),
       dongho: makeDongho(pid, pidAddrMap),
-      payDate: fmtDate(d.납부일자),
+      payDate: fmtDate(p.납부일자),
       roundName,
-      amount: d.금액.toLocaleString()+' 원',
-      cumAmount: (cumMap[yn]||d.금액).toLocaleString()+' 원',
+      amount: p.금액.toLocaleString()+' 원',
+      cumAmount: (cumMap[p.연번]||p.금액).toLocaleString()+' 원',
       issueDate
     };
   });
