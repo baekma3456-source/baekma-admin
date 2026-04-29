@@ -1742,7 +1742,7 @@ async function doPayImport(parsed) {
     const inserts=parsed.map(r=>({
       연번:r.연번, owner_id:ownerMap[r.연번]||null,
       회차:r.회차, 금액:r.금액, 납부일자:r.납부일자||null,
-      입금계좌:r.입금계좌||null, 메모:r.메모||null
+      납부자:r.납부자||null, 입금계좌:r.입금계좌||null, 메모:r.메모||null
     }));
     let saved=0;
     for(let i=0;i<inserts.length;i+=100){
@@ -1902,8 +1902,9 @@ async function printAllReceipts() {
   showToast('영수증 데이터 로드 중...','info');
 
   const {data:payments}=await _sb.from('payment')
-    .select('연번,금액,납부일자,입금자명,owner:owner_id(이름)')
-    .eq('회차',roundNo);
+    .select('연번,금액,납부일자,납부자')
+    .eq('회차',roundNo)
+    .limit(5000);
   if(!payments||!payments.length){showToast('납부 기록이 없습니다.','error');return;}
 
   const ynNums=[...new Set(payments.map(p=>p['연번']))];
@@ -1942,10 +1943,10 @@ async function printAllReceipts() {
   // 연번별 합산
   const ynMap={};
   payments.forEach(p=>{
-    if(!ynMap[p['연번']]) ynMap[p['연번']]={금액:0,납부일자:'—',입금자명:''};
+    if(!ynMap[p['연번']]) ynMap[p['연번']]={금액:0,납부일자:'—',납부자:''};
     ynMap[p['연번']].금액+=(p['금액']||0);
     if(p['납부일자']) ynMap[p['연번']].납부일자=p['납부일자'];
-    if(!ynMap[p['연번']].입금자명&&p['입금자명']) ynMap[p['연번']].입금자명=p['입금자명'];
+    if(!ynMap[p['연번']].납부자&&p['납부자']) ynMap[p['연번']].납부자=p['납부자'];
   });
 
   const today=new Date();
@@ -1960,7 +1961,7 @@ async function printAllReceipts() {
     const reg=regMap[yn]||{대표:'—',전체:[]};
     return {
       uid: makeUID(roundNo, d.납부일자, pid),
-      ownerName: resolveOwnerName(d.입금자명, reg.대표, reg.전체),
+      ownerName: resolveOwnerName(d.납부자, reg.대표, reg.전체),
       dongho: makeDongho(pid, pidAddrMap),
       payDate: fmtDate(d.납부일자),
       roundName,
@@ -1988,14 +1989,14 @@ async function searchReprint() {
     let rows=[];
     const isNum=/^\d+$/.test(keyword);
     if(isNum){
-      let q=_sb.from('payment').select('연번,금액,납부일자,입금자명,회차');
+      let q=_sb.from('payment').select('연번,금액,납부일자,납부자,회차');
       if(roundFilter) q=q.eq('회차',parseInt(roundFilter));
       const {data}=await q.eq('연번',parseInt(keyword));
       rows=data||[];
     } else {
       const {data:oList}=await _sb.from('owner').select('id').ilike('이름',`%${keyword}%`);
       if(oList?.length){
-        let q=_sb.from('payment').select('연번,금액,납부일자,입금자명,회차').in('owner_id',oList.map(o=>o.id));
+        let q=_sb.from('payment').select('연번,금액,납부일자,납부자,회차').in('owner_id',oList.map(o=>o.id));
         if(roundFilter) q=q.eq('회차',parseInt(roundFilter));
         const {data}=await q;
         rows=data||[];
@@ -2028,7 +2029,7 @@ async function searchReprint() {
     const grouped={};
     rows.forEach(p=>{
       const key=`${p['연번']}_${p['회차']}`;
-      if(!grouped[key]) grouped[key]={연번:p['연번'],회차:p['회차'],납부일자:p['납부일자'],입금자명:p['입금자명']||'',_금액합:0};
+      if(!grouped[key]) grouped[key]={연번:p['연번'],회차:p['회차'],납부일자:p['납부일자'],납부자:p['납부자']||'',_금액합:0};
       grouped[key]._금액합+=(p['금액']||0);
     });
 
@@ -2041,7 +2042,7 @@ async function searchReprint() {
       ${Object.values(grouped).map(p=>{
         const pid=ynPidMap2[p.연번]||'';
         const reg=regMap2[p.연번]||{대표:'—',전체:[]};
-        const ownerName=resolveOwnerName(p.입금자명, reg.대표, reg.전체);
+        const ownerName=resolveOwnerName(p.납부자, reg.대표, reg.전체);
         const dongho=makeDongho(pid, pidAddrMap2);
         const roundInfo=payRoundsGlobal.find(r=>r['회차']===p.회차);
         const roundName=roundInfo?.['이름']||p.회차+'회차';
