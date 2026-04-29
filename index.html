@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.32</title>
+<title>백마마을 재건축 — 관리자앱 v2.34</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -209,7 +209,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
     <div class="login-logo">
       <div class="logo-mark">🏘️</div>
       <h1>백마마을 통합재건축 주민대표단</h1>
-      <p>관리자 전용 시스템 v2.32</p>
+      <p>관리자 전용 시스템 v2.34</p>
     </div>
     <div class="form-group"><label>이메일</label><input type="email" id="login-email" placeholder="이메일" autocomplete="email"></div>
     <div class="form-group"><label>비밀번호</label><input type="password" id="login-pw" placeholder="비밀번호" autocomplete="current-password"></div>
@@ -223,7 +223,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.32</div>
+      <div class="site-sub">관리자앱 v2.34</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -1858,43 +1858,60 @@ function makeUID(roundNo, 납부일자, pid) {
   return `${String(roundNo).padStart(3,'0')}-${dateStr}-${pid||''}`;
 }
 
-// ── A4 1장에 영수증 2장(대표단+소유주) + 절취선 HTML 생성 ──
+// ── A4 가로 2장 나란히(좌:주민대표단 우:소유주) + 세로 점선 절취선 ──
 function buildReceiptPageHtml(fields) {
   const STYLE = `
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
-    @page{size:A4 portrait;margin:12mm 15mm}
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Noto Sans KR','맑은 고딕','Malgun Gothic',sans-serif;background:#fff;color:#111}
-    .page{width:100%;page-break-after:always}
-    .page:last-child{page-break-after:auto}
-    .receipt-wrap{display:flex;flex-direction:column}
-    .receipt-box{width:100%;border-collapse:collapse;border:1.5px solid #222}
-    .r-title-row td{text-align:center;font-size:15.5pt;font-weight:700;letter-spacing:5px;padding:15px 12px 6px;border-bottom:2px solid #222;line-height:1.6}
-    .r-label-tag{display:inline-block;border:1px solid #555;font-size:9.5pt;padding:2px 12px;letter-spacing:1.5px;font-weight:500;margin-top:5px}
-    .r-row td{border-bottom:0.5px solid #ccc;padding:8px 14px;font-size:11pt;vertical-align:middle}
-    .r-key{width:38%;letter-spacing:1px;color:#333;white-space:nowrap}
-    .r-val{font-weight:600;letter-spacing:0.3px}
-    .r-mono{font-family:'Courier New',monospace;font-size:9.5pt;font-weight:400;letter-spacing:0}
-    .r-highlight td{background:#f2f2f2}
-    .r-amount{font-size:17pt;font-weight:700}
-    .r-footer-row td{text-align:center;font-size:11pt;padding:12px;border-top:2px solid #222;font-weight:500;letter-spacing:1px}
-    .cut-wrap{position:relative;margin:8mm 0}
-    .cut-line{border:none;border-top:1.5px dashed #999;width:100%}
-    .cut-label{position:absolute;left:50%;top:-9px;transform:translateX(-50%);background:#fff;padding:0 10px;font-size:8pt;color:#888;letter-spacing:1px;white-space:nowrap}
+    @page { size: A4 portrait; margin: 10mm 8mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Noto Sans KR', '맑은 고딕', 'Malgun Gothic', sans-serif; background: #fff; color: #111; }
+
+    /* A4 한 페이지 = 좌우 2장 나란히 */
+    .page { width: 100%; page-break-after: always; display: flex; flex-direction: row; align-items: stretch; gap: 0; }
+    .page:last-child { page-break-after: auto; }
+
+    /* 각 영수증 박스 */
+    .r-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4mm 3mm; }
+
+    /* 세로 점선 절취선 */
+    .cut-col { width: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+    .cut-col-line { border-left: 1.5px dashed #999; height: 100%; }
+    .cut-col-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(90deg); background: #fff; padding: 0 6px; font-size: 7pt; color: #888; letter-spacing: 1px; white-space: nowrap; }
+
+    /* 영수증 테이블 */
+    .r-box { width: 100%; border-collapse: collapse; border: 1.5px solid #222; }
+
+    /* 제목 행 */
+    .r-title td { text-align: center; font-size: 13.5pt; font-weight: 700; letter-spacing: 5px; padding: 12px 8px 5px; border-bottom: 1.5px solid #222; line-height: 1.7; }
+    .r-tag { display: inline-block; border: 1px solid #444; font-size: 8.5pt; padding: 1px 10px; letter-spacing: 1px; font-weight: 500; margin-top: 3px; }
+
+    /* 일반 행 */
+    .r-row td { border-bottom: 0.5px solid #ccc; padding: 7px 0 7px 8px; font-size: 10pt; vertical-align: middle; }
+    .r-key { width: 36%; letter-spacing: 1.5px; color: #222; white-space: nowrap; }
+    .r-bar { width: 4px; padding: 0 !important; border-left: 1.5px solid #333; }
+    .r-val { font-weight: 700; padding-left: 6px !important; font-size: 10.5pt; letter-spacing: 0.3px; }
+    .r-mono { font-family: 'Courier New', monospace; font-size: 8.5pt; font-weight: 400; letter-spacing: 0; }
+
+    /* 금액 강조 행 */
+    .r-hl td { background: #ebebeb; }
+    .r-amount { font-size: 13pt; font-weight: 700; }
+
+    /* 하단 footer */
+    .r-footer td { text-align: center; font-size: 10pt; padding: 10px 8px; border-top: 1.5px solid #222; font-weight: 500; letter-spacing: 0.5px; }
   `;
 
   function oneReceipt(label, f) {
-    return `<table class="receipt-box" cellpadding="0" cellspacing="0">
-      <tr class="r-title-row"><td colspan="2">운 영 경 비 납 부 영 수 증<br><span class="r-label-tag">${label}</span></td></tr>
-      <tr class="r-row"><td class="r-key">고 유 번 호</td><td class="r-val r-mono">${f.uid||''}</td></tr>
-      <tr class="r-row"><td class="r-key">소 &nbsp;&nbsp; 유 &nbsp;&nbsp; 주</td><td class="r-val">${f.ownerName||''}</td></tr>
-      <tr class="r-row"><td class="r-key">동 &nbsp;&nbsp; · &nbsp;&nbsp; 호 &nbsp;&nbsp; 수</td><td class="r-val">${f.dongho||''}</td></tr>
-      <tr class="r-row"><td class="r-key">납 &nbsp;&nbsp; 부 &nbsp;&nbsp; 일 &nbsp;&nbsp; 자</td><td class="r-val">${f.payDate||''}</td></tr>
-      <tr class="r-row"><td class="r-key">회 &nbsp;&nbsp; 차 &nbsp;&nbsp; 구 &nbsp;&nbsp; 분</td><td class="r-val">${f.roundName||''}</td></tr>
-      <tr class="r-row r-highlight"><td class="r-key">납 &nbsp;&nbsp; 부 &nbsp;&nbsp; 금 &nbsp;&nbsp; 액</td><td class="r-val r-amount">${f.amount||''}</td></tr>
-      <tr class="r-row r-highlight"><td class="r-key">누 적 납 부 총 액</td><td class="r-val r-amount">${f.cumAmount||''}</td></tr>
-      <tr class="r-row"><td class="r-key">발 &nbsp;&nbsp; 행 &nbsp;&nbsp; 일</td><td class="r-val">${f.issueDate||''}</td></tr>
-      <tr class="r-footer-row"><td colspan="2">백마마을3456단지 통합재건축 주민대표단 (인)</td></tr>
+    return `<table class="r-box" cellpadding="0" cellspacing="0">
+      <tr class="r-title"><td colspan="3">운 &nbsp; 영 &nbsp; 경 &nbsp; 비 &nbsp; 납 &nbsp; 부 &nbsp; 영 &nbsp; 수 &nbsp; 증<br><span class="r-tag">${label}</span></td></tr>
+      <tr class="r-row"><td class="r-key">고 유 번 호</td><td class="r-bar"></td><td class="r-val r-mono">${f.uid||''}</td></tr>
+      <tr class="r-row"><td class="r-key">소 &nbsp; 유 &nbsp; 주</td><td class="r-bar"></td><td class="r-val">${f.ownerName||''}</td></tr>
+      <tr class="r-row"><td class="r-key">동 · 호 수</td><td class="r-bar"></td><td class="r-val">${f.dongho||''}</td></tr>
+      <tr class="r-row"><td class="r-key">납 부 일 자</td><td class="r-bar"></td><td class="r-val">${f.payDate||''}</td></tr>
+      <tr class="r-row"><td class="r-key">회 차 구 분</td><td class="r-bar"></td><td class="r-val">${f.roundName||''}</td></tr>
+      <tr class="r-row r-hl"><td class="r-key">납 부 금 액</td><td class="r-bar"></td><td class="r-val r-amount">${f.amount||''}</td></tr>
+      <tr class="r-row r-hl"><td class="r-key">누적 납부 총액</td><td class="r-bar"></td><td class="r-val r-amount">${f.cumAmount||''}</td></tr>
+      <tr class="r-row"><td class="r-key">발 &nbsp; 행 &nbsp; 일</td><td class="r-bar"></td><td class="r-val">${f.issueDate||''}</td></tr>
+      <tr class="r-footer"><td colspan="3">백마마을3456단지 통합재건축 주민대표단 (인)</td></tr>
     </table>`;
   }
 
@@ -1902,11 +1919,12 @@ function buildReceiptPageHtml(fields) {
   <style>${STYLE}</style></head><body>
   ${fields.map(f=>`
     <div class="page">
-      <div class="receipt-wrap">
-        ${oneReceipt('주민대표단 보관용', f)}
-        <div class="cut-wrap"><hr class="cut-line"><span class="cut-label">✂ &nbsp; 절 취 선 &nbsp; ✂</span></div>
-        ${oneReceipt('소유주 보관용', f)}
+      <div class="r-wrap">${oneReceipt('주민대표단 보관용', f)}</div>
+      <div class="cut-col">
+        <div class="cut-col-line"></div>
+        <span class="cut-col-label">✂ 절 취 선</span>
       </div>
+      <div class="r-wrap">${oneReceipt('소유주 보관용', f)}</div>
     </div>`).join('')}
   </body></html>`;
 }
@@ -1917,7 +1935,7 @@ async function printAllReceipts() {
   showToast('영수증 데이터 로드 중...','info');
 
   const {data:payments}=await _sb.from('payment')
-    .select('연번,금액,납부일자,메모')
+    .select('연번,금액,납부일자,메모,부동산코드')
     .eq('회차',roundNo)
     .limit(5000);
   if(!payments||!payments.length){showToast('납부 기록이 없습니다.','error');return;}
@@ -1935,15 +1953,18 @@ async function printAllReceipts() {
     });
   }
 
-  // 연번 → 부동산코드 (대표소유주 기준)
-  const ynPidMap={};
-  for(let i=0;i<ynNums.length;i+=500){
-    const {data}=await _sb.from('registration').select('연번,부동산코드,대표소유주').in('연번',ynNums.slice(i,i+500));
-    (data||[]).forEach(r=>{ if(r['대표소유주']||!ynPidMap[r['연번']]) ynPidMap[r['연번']]=r['부동산코드']; });
+  // payment.부동산코드가 없는 경우 fallback: registration의 대표소유주 기준 부동산코드 사용
+  const fallbackPidMap={};
+  const noCodeYns=[...new Set(payments.filter(p=>!p['부동산코드']).map(p=>p['연번']))];
+  if(noCodeYns.length){
+    for(let i=0;i<noCodeYns.length;i+=500){
+      const {data}=await _sb.from('registration').select('연번,부동산코드,대표소유주').in('연번',noCodeYns.slice(i,i+500));
+      (data||[]).forEach(r=>{ if(r['대표소유주']||!fallbackPidMap[r['연번']]) fallbackPidMap[r['연번']]=r['부동산코드']; });
+    }
   }
 
-  // 부동산코드 → 동/호
-  const allPids=[...new Set(Object.values(ynPidMap))];
+  // 부동산코드 → 동/호 (payment 부동산코드 + fallback 합산)
+  const allPids=[...new Set(payments.map(p=>p['부동산코드']||fallbackPidMap[p['연번']]||'').filter(Boolean))];
   const pidAddrMap={};
   for(let i=0;i<allPids.length;i+=500){
     const {data}=await _sb.from('property').select('부동산코드,동,호').in('부동산코드',allPids.slice(i,i+500));
@@ -1960,30 +1981,28 @@ async function printAllReceipts() {
   const roundName=roundInfo?.['이름']||roundNo+'회차';
 
   // 납부일자별 개별 영수증 레코드 생성 (합산하지 않음)
-  // 같은 연번+같은 날짜라도 별도 행이면 별도 영수증
   const records = payments.map(p=>({
     연번: p['연번'],
     금액: p['금액']||0,
     납부일자: p['납부일자']||'—',
-    메모: p['메모']||''
+    메모: p['메모']||'',
+    // payment.부동산코드 우선, 없으면 fallback(대표소유주 기준)
+    pid: p['부동산코드'] || fallbackPidMap[p['연번']] || ''
   }));
 
   // 부동산코드 기준 정렬 (같은 부동산코드면 납부일자 오름차순)
   records.sort((a,b)=>{
-    const pa=ynPidMap[a.연번]||'zzz';
-    const pb=ynPidMap[b.연번]||'zzz';
-    const cmp=pa.localeCompare(pb,'ko');
+    const cmp=(a.pid||'zzz').localeCompare(b.pid||'zzz','ko');
     if(cmp!==0) return cmp;
     return (a.납부일자||'').localeCompare(b.납부일자||'');
   });
 
   const fields=records.map(p=>{
-    const pid=ynPidMap[p.연번]||'';
     const reg=regMap[p.연번]||{대표:'—',전체:[]};
     return {
-      uid: makeUID(roundNo, p.납부일자, pid),
+      uid: makeUID(roundNo, p.납부일자, p.pid),
       ownerName: resolveOwnerName(p.메모, reg.대표, reg.전체),
-      dongho: makeDongho(pid, pidAddrMap),
+      dongho: makeDongho(p.pid, pidAddrMap),
       payDate: fmtDate(p.납부일자),
       roundName,
       amount: p.금액.toLocaleString()+' 원',
@@ -2010,14 +2029,14 @@ async function searchReprint() {
     let rows=[];
     const isNum=/^\d+$/.test(keyword);
     if(isNum){
-      let q=_sb.from('payment').select('연번,금액,납부일자,메모,회차');
+      let q=_sb.from('payment').select('연번,금액,납부일자,메모,회차,부동산코드');
       if(roundFilter) q=q.eq('회차',parseInt(roundFilter));
       const {data}=await q.eq('연번',parseInt(keyword));
       rows=data||[];
     } else {
       const {data:oList}=await _sb.from('owner').select('id').ilike('이름',`%${keyword}%`);
       if(oList?.length){
-        let q=_sb.from('payment').select('연번,금액,납부일자,메모,회차').in('owner_id',oList.map(o=>o.id));
+        let q=_sb.from('payment').select('연번,금액,납부일자,메모,회차,부동산코드').in('owner_id',oList.map(o=>o.id));
         if(roundFilter) q=q.eq('회차',parseInt(roundFilter));
         const {data}=await q;
         rows=data||[];
@@ -2026,17 +2045,30 @@ async function searchReprint() {
     if(!rows.length){el.innerHTML='<div style="font-size:13px;color:var(--text3);padding:8px 0">납부 기록이 없습니다.</div>';return;}
 
     const ynNums=[...new Set(rows.map(r=>r['연번']))];
-    const ynPidMap2={}, regMap2={};
+
+    // 소유주 정보 조회
+    const regMap2={};
     for(let i=0;i<ynNums.length;i+=500){
-      const {data}=await _sb.from('registration').select('연번,부동산코드,대표소유주,owner:owner_id(이름)').in('연번',ynNums.slice(i,i+500));
+      const {data}=await _sb.from('registration').select('연번,대표소유주,owner:owner_id(이름)').in('연번',ynNums.slice(i,i+500));
       (data||[]).forEach(r=>{
-        if(r['대표소유주']||!ynPidMap2[r['연번']]) ynPidMap2[r['연번']]=r['부동산코드'];
         if(!regMap2[r['연번']]) regMap2[r['연번']]={대표:'—',전체:[]};
         if(r.owner?.이름) regMap2[r['연번']].전체.push(r.owner.이름);
         if(r['대표소유주']&&r.owner?.이름) regMap2[r['연번']].대표=r.owner.이름;
       });
     }
-    const allPids2=[...new Set(Object.values(ynPidMap2))];
+
+    // payment.부동산코드 없는 경우 fallback
+    const fallbackPidMap2={};
+    const noCodeYns2=[...new Set(rows.filter(p=>!p['부동산코드']).map(p=>p['연번']))];
+    if(noCodeYns2.length){
+      for(let i=0;i<noCodeYns2.length;i+=500){
+        const {data}=await _sb.from('registration').select('연번,부동산코드,대표소유주').in('연번',noCodeYns2.slice(i,i+500));
+        (data||[]).forEach(r=>{ if(r['대표소유주']||!fallbackPidMap2[r['연번']]) fallbackPidMap2[r['연번']]=r['부동산코드']; });
+      }
+    }
+
+    // 부동산코드 → 동/호
+    const allPids2=[...new Set(rows.map(p=>p['부동산코드']||fallbackPidMap2[p['연번']]||'').filter(Boolean))];
     const pidAddrMap2={};
     for(let i=0;i<allPids2.length;i+=500){
       const {data}=await _sb.from('property').select('부동산코드,동,호').in('부동산코드',allPids2.slice(i,i+500));
@@ -2046,11 +2078,11 @@ async function searchReprint() {
     const cumMap2={};
     (allPays2||[]).forEach(p=>{cumMap2[p['연번']]=(cumMap2[p['연번']]||0)+(p['금액']||0);});
 
-    // 연번+회차별 그룹
+    // 연번+회차+납부일자별 그룹 (날짜별 별도 영수증)
     const grouped={};
     rows.forEach(p=>{
-      const key=`${p['연번']}_${p['회차']}`;
-      if(!grouped[key]) grouped[key]={연번:p['연번'],회차:p['회차'],납부일자:p['납부일자'],메모:p['메모']||'',_금액합:0};
+      const key=`${p['연번']}_${p['회차']}_${p['납부일자']||''}`;
+      if(!grouped[key]) grouped[key]={연번:p['연번'],회차:p['회차'],납부일자:p['납부일자'],메모:p['메모']||'',부동산코드:p['부동산코드']||'',_금액합:0};
       grouped[key]._금액합+=(p['금액']||0);
     });
 
@@ -2061,7 +2093,7 @@ async function searchReprint() {
       <thead><tr><th>연번</th><th>동호수</th><th>소유주</th><th>회차</th><th>납부일자</th><th>금액</th><th></th></tr></thead>
       <tbody>
       ${Object.values(grouped).map(p=>{
-        const pid=ynPidMap2[p.연번]||'';
+        const pid=p.부동산코드||fallbackPidMap2[p.연번]||'';
         const reg=regMap2[p.연번]||{대표:'—',전체:[]};
         const ownerName=resolveOwnerName(p.메모, reg.대표, reg.전체);
         const dongho=makeDongho(pid, pidAddrMap2);
