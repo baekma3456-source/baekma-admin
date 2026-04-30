@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.34</title>
+<title>백마마을 재건축 — 관리자앱 v2.35</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -209,7 +209,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
     <div class="login-logo">
       <div class="logo-mark">🏘️</div>
       <h1>백마마을 통합재건축 주민대표단</h1>
-      <p>관리자 전용 시스템 v2.34</p>
+      <p>관리자 전용 시스템 v2.35</p>
     </div>
     <div class="form-group"><label>이메일</label><input type="email" id="login-email" placeholder="이메일" autocomplete="email"></div>
     <div class="form-group"><label>비밀번호</label><input type="password" id="login-pw" placeholder="비밀번호" autocomplete="current-password"></div>
@@ -223,7 +223,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.34</div>
+      <div class="site-sub">관리자앱 v2.35</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -1019,11 +1019,11 @@ async function renderOwnerTable(rows, total, totalPages) {
     return;
   }
 
-  // 연번 목록 수집 → 동의 상태 + 시행방식 일괄 조회
+  // 연번 목록 수집 → 동의 상태 + 시행방식 + 납부총액 일괄 조회
   const ynNums = [...new Set(rows.map(r=>r['연번']))];
-  let consentMap = {}, shihaengMap = {}, ynPropCountMap = {};
+  let consentMap = {}, shihaengMap = {}, ynPropCountMap = {}, paymentTotalMap = {};
 
-  const [consentRows, yeonbunRows, ypCountRows] = await Promise.all([
+  const [consentRows, yeonbunRows, ypCountRows, paymentRows] = await Promise.all([
     (async()=>{
       let all=[];
       for(let i=0;i<ynNums.length;i+=500){
@@ -1047,12 +1047,22 @@ async function renderOwnerTable(rows, total, totalPages) {
         if(data) all=all.concat(data);
       }
       return all;
+    })(),
+    (async()=>{
+      // 현재 소유주 납부총액 (is_previous_owner=false)
+      let all=[];
+      for(let i=0;i<ynNums.length;i+=500){
+        const {data}=await _sb.from('payment').select('연번,금액').in('연번',ynNums.slice(i,i+500)).eq('is_previous_owner',false);
+        if(data) all=all.concat(data);
+      }
+      return all;
     })()
   ]);
 
   consentRows.forEach(c=>{ if(!consentMap[c['연번']])consentMap[c['연번']]=[]; consentMap[c['연번']].push(c); });
   yeonbunRows.forEach(y=>{ shihaengMap[y['연번']]=y['시행방식']||'—'; });
   ypCountRows.forEach(y=>{ ynPropCountMap[y['연번']]=(ynPropCountMap[y['연번']]||0)+1; });
+  paymentRows.forEach(p=>{ paymentTotalMap[p['연번']]=(paymentTotalMap[p['연번']]||0)+(p['금액']||0); });
 
   // 동의서 셀 — 클릭하면 수정 모달 열기
   function consentCells(yn) {
@@ -1101,7 +1111,7 @@ async function renderOwnerTable(rows, total, totalPages) {
         <thead>
           <tr>
             <th>동/호</th><th>연번</th>
-            <th>소유주</th><th>소유형태</th><th>전화번호</th><th>거주구분</th><th>사업방식</th>
+            <th>소유주</th><th>납부총액</th><th>소유형태</th><th>전화번호</th><th>거주구분</th><th>사업방식</th>
             <th style="text-align:center">사전</th><th style="text-align:center">컨설팅</th>
             <th style="text-align:center">선도</th><th style="text-align:center">주대단</th>
             <th style="text-align:center">입안</th><th style="text-align:center">추진위</th>
@@ -1130,6 +1140,11 @@ async function renderOwnerTable(rows, total, totalPages) {
                 ${r['대표소유주']?'<span class="badge badge-blue" style="font-size:10px;margin-left:4px">대표</span>':''}
                 ${isMultiProp?'<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>':''}
               </td>
+              <td class="mono" style="color:${(paymentTotalMap[r['연번']]||0)>0?'var(--green)':'var(--text3)'};cursor:pointer;font-weight:600"
+                onclick="openOwnerModal('${r.owner?.id}',${r['연번']},2)"
+                title="납부현황 보기">
+                ${(paymentTotalMap[r['연번']]||0)>0?(paymentTotalMap[r['연번']]).toLocaleString()+'원':'—'}
+              </td>
               <td>${ownershipBadge}</td>
               <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${r.owner?.id||''}')" title="더블클릭 수정">${r.owner?.전화번호||'—'}</span></td>
               <td><span ondblclick="startInlineEdit(this,'거주구분','${r["연번"]||''}','${r["property"]?.부동산코드||''}','${r.owner?.id||''}')" title="더블클릭 수정">${r['거주구분']||'—'}</span></td>
@@ -1139,7 +1154,7 @@ async function renderOwnerTable(rows, total, totalPages) {
         </tbody>
       </table></div>
       ${paginationHtml}
-      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 납부총액 클릭→납부현황 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
   } else {
     // 연번 기준
     const ynMap={};
@@ -1155,7 +1170,7 @@ async function renderOwnerTable(rows, total, totalPages) {
       <div class="table-wrap"><table>
         <thead>
           <tr>
-            <th>연번</th><th>대표소유주</th><th>소유형태</th><th>전화번호</th>
+            <th>연번</th><th>대표소유주</th><th>납부총액</th><th>소유형태</th><th>전화번호</th>
             <th>거주구분</th><th>사업방식</th>
             <th style="text-align:center">사전</th><th style="text-align:center">컨설팅</th>
             <th style="text-align:center">선도</th><th style="text-align:center">주대단</th>
@@ -1183,6 +1198,11 @@ async function renderOwnerTable(rows, total, totalPages) {
                   onclick="openOwnerModal('${rep?.owner?.id}',${yn})">${rep?.owner?.이름||'—'}</span>
                 ${isMulti?`<span class="badge" style="font-size:10px;margin-left:4px;background:#f3e8ff;color:#7e22ce">다주택</span>`:''}
               </td>
+              <td class="mono" style="color:${(paymentTotalMap[yn]||0)>0?'var(--green)':'var(--text3)'};cursor:pointer;font-weight:600"
+                onclick="openOwnerModal('${rep?.owner?.id}',${yn},2)"
+                title="납부현황 보기">
+                ${(paymentTotalMap[yn]||0)>0?(paymentTotalMap[yn]).toLocaleString()+'원':'—'}
+              </td>
               <td>${ownershipBadge}</td>
               <td class="mono"><span ondblclick="startInlineEdit(this,'전화번호','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.owner?.전화번호||'—'}</span></td>
               <td><span ondblclick="startInlineEdit(this,'거주구분','${rep?.['연번']||''}','${rep?.property?.부동산코드||''}','${rep?.owner?.id||''}')" title="더블클릭 수정">${rep?.['거주구분']||'—'}</span></td>
@@ -1193,7 +1213,7 @@ async function renderOwnerTable(rows, total, totalPages) {
         </tbody>
       </table></div>
       ${paginationHtml}
-      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 이름 클릭→상세 &nbsp;|&nbsp; 납부총액 클릭→납부현황 &nbsp;|&nbsp; 전화번호·거주구분 더블클릭→수정 &nbsp;|&nbsp; 동의서 칸 클릭→상태 수정</div>`;
   }
 }
 
@@ -1260,14 +1280,14 @@ async function startInlineEdit(el, field, ownerId, yeonbun, pidOrOwnerId) {
 // ════════════════════════════════════════════════
 // 소유주 상세 모달
 // ════════════════════════════════════════════════
-async function openOwnerModal(ownerId, yeonbun) {
+async function openOwnerModal(ownerId, yeonbun, initialTab=0) {
   currentOwnerData = { ownerId, yeonbun };
-  currentModalTab = 0;
+  currentModalTab = initialTab;
   updateModalTabs();
   openModal('owner-modal');
   document.getElementById('modal-owner-name').textContent = '불러오는 중...';
   document.getElementById('modal-owner-sub').textContent = '';
-  await loadModalTab(0);
+  await loadModalTab(initialTab);
 }
 function updateModalTabs() {
   ['mtab-0','mtab-1','mtab-2','mtab-3'].forEach((id,i)=>{ document.getElementById(id).classList.toggle('active',i===currentModalTab); });
@@ -1355,51 +1375,104 @@ async function loadOwnerConsentTab(yeonbun,body){
 }
 
 async function loadOwnerPaymentTab(yeonbun,body){
-  const {data:payments}=await _sb.from('payment')
-    .select('*,payment_round:회차(이름,납부기한,금액기준),owner:owner_id(이름)')
-    .eq('연번',yeonbun)
-    .order('납부일자',{ascending:false});
+  const [{data:payments},{data:regData}]=await Promise.all([
+    _sb.from('payment')
+      .select('*,payment_round:회차(이름,납부기한,금액기준),owner:owner_id(이름)')
+      .eq('연번',yeonbun)
+      .order('납부일자',{ascending:false}),
+    _sb.from('registration')
+      .select('부동산코드,대표소유주,owner:owner_id(이름),property:부동산코드(동,호)')
+      .eq('연번',yeonbun)
+  ]);
+
   if(!payments||!payments.length){
     body.innerHTML='<div class="empty-state"><div class="empty-icon">💳</div><p>납부 기록이 없습니다.</p></div>';
     return;
   }
 
-  // 현재 소유주 납부 / 이전 소유주 납부 분리
+  // 연번 소유주 목록 (대표 + 전체) — 납부자명 결정용
+  const regRep = (regData||[]).find(r=>r['대표소유주']) || regData?.[0];
+  const regOwnerNames = (regData||[]).map(r=>r.owner?.이름).filter(Boolean);
+  const repName = regRep?.owner?.이름 || '—';
+  const dongho = regRep?.property ? `${regRep.property.동}동 ${regRep.property.호}호` : '—';
+
+  // 부동산코드 → 동호수 맵
+  const pidAddrMap2 = {};
+  (regData||[]).forEach(r=>{ if(r.property&&r['부동산코드']) pidAddrMap2[r['부동산코드']]={dong:r.property.동,ho:r.property.호}; });
+
+  // 현재/이전 소유주 분리
   const currentPays  = payments.filter(p=>!p['is_previous_owner']);
   const previousPays = payments.filter(p=> p['is_previous_owner']);
   const currentTotal  = currentPays.reduce((s,p)=>s+(p['금액']||0),0);
   const previousTotal = previousPays.reduce((s,p)=>s+(p['금액']||0),0);
+  const grandTotal = payments.reduce((s,p)=>s+(p['금액']||0),0);
+
+  // 영수증 인쇄용 필드 생성
+  function makeReceiptField(p) {
+    const pid = p['부동산코드'] || regRep?.['부동산코드'] || '';
+    const addr = pidAddrMap2[pid];
+    const dh = addr ? `${addr.dong}동 ${addr.ho}호` : dongho;
+    const ownerName = resolveOwnerName(p['메모']||'', repName, regOwnerNames);
+    const roundName = p.payment_round?.이름 || p['회차']+'회차';
+    const today = new Date();
+    return {
+      uid: makeUID(p['회차'], p['납부일자'], pid),
+      ownerName, dongho: dh,
+      payDate: fmtDate(p['납부일자']),
+      roundName,
+      amount: (p['금액']||0).toLocaleString()+' 원',
+      cumAmount: grandTotal.toLocaleString()+' 원',
+      issueDate: `${today.getFullYear()}년 ${String(today.getMonth()+1).padStart(2,'0')}월 ${String(today.getDate()).padStart(2,'0')}일`
+    };
+  }
 
   function payRows(list) {
-    return list.map(p=>`<tr ${p['is_previous_owner']?'style="opacity:0.65;background:var(--yellow-soft)"':''}>
-      <td>${p.payment_round?.이름||p['회차']+'회차'}</td>
-      <td>${p.owner?.이름||'—'}${p['is_previous_owner']?'<span class="badge badge-yellow" style="font-size:10px;margin-left:4px">이전소유주</span>':''}</td>
-      <td class="mono" style="color:${p['is_previous_owner']?'var(--yellow)':'var(--green)'}">${(p['금액']||0).toLocaleString()}원</td>
-      <td class="mono">${p['납부일자']||'—'}</td>
-      <td class="mono">${p['입금계좌']||'—'}</td>
-      <td style="color:var(--text3)">${p['메모']||'—'}</td>
-    </tr>`).join('');
+    return list.map(p=>{
+      const fStr = encodeURIComponent(JSON.stringify(makeReceiptField(p)));
+      return `<tr ${p['is_previous_owner']?'style="opacity:0.65;background:var(--yellow-soft)"':''}>
+        <td>${p.payment_round?.이름||p['회차']+'회차'}</td>
+        <td>${p.owner?.이름||'—'}${p['is_previous_owner']?'<span class="badge badge-yellow" style="font-size:10px;margin-left:4px">이전소유주</span>':''}</td>
+        <td class="mono" style="color:${p['is_previous_owner']?'var(--yellow)':'var(--green)'}">${(p['금액']||0).toLocaleString()}원</td>
+        <td class="mono">${p['납부일자']||'—'}</td>
+        <td class="mono">${p['입금계좌']||'—'}</td>
+        <td style="color:var(--text3)">${p['메모']||'—'}</td>
+        <td><button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px"
+          onclick="printSingleReceipt('${fStr}')">🖨</button></td>
+      </tr>`;
+    }).join('');
   }
 
   body.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div class="card-title">납부 기록 — 연번 ${yeonbun}</div>
-      <div style="text-align:right">
-        <div style="font-size:13px;color:var(--accent)">현재 소유주 납부: <strong>${currentTotal.toLocaleString()}원</strong></div>
-        ${previousPays.length?`<div style="font-size:11px;color:var(--yellow);margin-top:2px">이전 소유주 납부 포함: ${previousTotal.toLocaleString()}원</div>`:''}
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="text-align:right;margin-right:8px">
+          <div style="font-size:13px;color:var(--accent)">현재 소유주 납부: <strong>${currentTotal.toLocaleString()}원</strong></div>
+          ${previousPays.length?`<div style="font-size:11px;color:var(--yellow);margin-top:2px">이전 소유주 포함: ${grandTotal.toLocaleString()}원</div>`:''}
+        </div>
+        <button class="btn btn-blue btn-sm" onclick="printAllPaymentReceipts(${yeonbun})">🖨 전체 인쇄</button>
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>회차</th><th>납부자</th><th>금액</th><th>납부일자</th><th>입금계좌</th><th>메모</th></tr></thead>
+      <thead><tr><th>회차</th><th>납부자</th><th>금액</th><th>납부일자</th><th>입금계좌</th><th>메모</th><th>인쇄</th></tr></thead>
       <tbody>
         ${payRows(currentPays)}
         ${previousPays.length?`
-          <tr><td colspan="6" style="padding:6px 12px;background:var(--yellow-soft);font-size:11px;color:var(--yellow);font-weight:600;border-top:2px dashed var(--yellow)">
-            ▼ 이전 소유주 납부 기록 (${previousPays.length}건 / ${previousTotal.toLocaleString()}원) — 소유주 교체 이전 납부
+          <tr><td colspan="7" style="padding:6px 12px;background:var(--yellow-soft);font-size:11px;color:var(--yellow);font-weight:600;border-top:2px dashed var(--yellow)">
+            ▼ 이전 소유주 납부 기록 (${previousPays.length}건 / ${previousTotal.toLocaleString()}원)
           </td></tr>
           ${payRows(previousPays)}` : ''}
       </tbody>
     </table></div>`;
+
+  // 전체 인쇄 함수 (이 연번의 모든 납부 기록)
+  window.printAllPaymentReceipts = async function(yn) {
+    const fields = payments.map(p=>makeReceiptField(p));
+    const w=window.open('','_blank','width=900,height=800');
+    w.document.write(buildReceiptPageHtml(fields));
+    w.document.close();
+    setTimeout(()=>w.print(),900);
+  };
 }
 
 async function loadOwnerActivityTab(yeonbun,ownerId,body){
