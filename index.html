@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>백마마을 재건축 — 관리자앱 v2.36</title>
+<title>백마마을 재건축 — 관리자앱 v2.38</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -209,7 +209,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
     <div class="login-logo">
       <div class="logo-mark">🏘️</div>
       <h1>백마마을 통합재건축 주민대표단</h1>
-      <p>관리자 전용 시스템 v2.36</p>
+      <p>관리자 전용 시스템 v2.38</p>
     </div>
     <div class="form-group"><label>이메일</label><input type="email" id="login-email" placeholder="이메일" autocomplete="email"></div>
     <div class="form-group"><label>비밀번호</label><input type="password" id="login-pw" placeholder="비밀번호" autocomplete="current-password"></div>
@@ -223,7 +223,7 @@ tbody td.mono { font-family: var(--mono); font-size: 12px; color: var(--text2); 
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="site-name">백마마을 통합재건축 주민대표단</div>
-      <div class="site-sub">관리자앱 v2.36</div>
+      <div class="site-sub">관리자앱 v2.38</div>
     </div>
     <div class="sidebar-user" onclick="openPasswordModal()" title="비밀번호 변경">
       <div class="user-avatar" id="user-avatar">위</div>
@@ -843,13 +843,27 @@ async function onDanjiChange() {
   const danji = document.getElementById('filter-danji').value;
   ownerFilters.danji = danji;
   ownerFilters.dong = '';
-  // 동 목록 로드
   const dongSel = document.getElementById('filter-dong');
   dongSel.innerHTML = '<option value="">전체 동</option>';
+
   if (danji) {
-    const {data} = await _sb.from('property').select('동').eq('단지', danji).limit(1000);
+    let data;
+    if (danji === '상가동') {
+      // 상가동 선택 시: 상가동·분산상가·백마상가·설촌상가 의 동 목록
+      const SANGGA_TYPES = ['상가동','분산상가','백마상가','설촌상가'];
+      const res = await _sb.from('property').select('동,부동산유형').in('부동산유형', SANGGA_TYPES).limit(1000);
+      data = res.data;
+    } else {
+      // 3~6단지 선택 시: 아파트만 (부동산유형='아파트') 조회
+      const res = await _sb.from('property').select('동,부동산유형').eq('단지', danji).eq('부동산유형','아파트').limit(1000);
+      data = res.data;
+    }
+
     const dongSet = new Set((data||[]).map(p=>p['동']).filter(Boolean));
-    [...dongSet].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);return isNaN(an)||isNaN(bn)?a.localeCompare(b,'ko'):an-bn;}).forEach(d=>{
+    [...dongSet].sort((a,b)=>{
+      const an=parseInt(a), bn=parseInt(b);
+      return isNaN(an)||isNaN(bn) ? a.localeCompare(b,'ko') : an-bn;
+    }).forEach(d=>{
       const o=document.createElement('option'); o.value=d; o.textContent=d; dongSel.appendChild(o);
     });
   }
@@ -1935,42 +1949,42 @@ function makeUID(roundNo, 납부일자, pid) {
 function buildReceiptPageHtml(fields) {
   const STYLE = `
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
-    @page { size: A4 landscape; margin: 10mm 12mm; }
+    @page { size: A4 landscape; margin: 5mm 8mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Noto Sans KR', '맑은 고딕', 'Malgun Gothic', sans-serif; background: #fff; color: #111; }
 
-    /* A4 가로 한 페이지 = 좌우 2장 나란히 */
-    .page { width: 100%; height: 190mm; page-break-after: always; display: flex; flex-direction: row; align-items: stretch; gap: 0; }
+    /* A4 가로 한 페이지 = 좌우 2장 나란히, 높이를 가득 채움 */
+    .page { width: 100%; height: 198mm; page-break-after: always; display: flex; flex-direction: row; align-items: stretch; gap: 0; }
     .page:last-child { page-break-after: auto; }
 
     /* 각 영수증 박스 */
-    .r-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3mm 4mm; }
+    .r-wrap { flex: 1; display: flex; flex-direction: column; justify-content: stretch; padding: 2mm 3mm; }
 
     /* 세로 점선 절취선 */
     .cut-col { width: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
     .cut-col-line { border-left: 1.5px dashed #999; height: 100%; }
     .cut-col-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(90deg); background: #fff; padding: 0 6px; font-size: 7pt; color: #888; letter-spacing: 1px; white-space: nowrap; }
 
-    /* 영수증 테이블 */
-    .r-box { width: 100%; border-collapse: collapse; border: 1.5px solid #222; }
+    /* 영수증 테이블 — 높이를 100%로 채움 */
+    .r-box { width: 100%; height: 100%; border-collapse: collapse; border: 1.5px solid #222; table-layout: fixed; }
 
     /* 제목 행 */
-    .r-title td { text-align: center; font-size: 14pt; font-weight: 700; letter-spacing: 5px; padding: 10px 8px 4px; border-bottom: 1.5px solid #222; line-height: 1.6; }
-    .r-tag { display: inline-block; border: 1px solid #444; font-size: 8.5pt; padding: 1px 10px; letter-spacing: 1px; font-weight: 500; margin-top: 3px; }
+    .r-title td { text-align: center; font-size: 14pt; font-weight: 700; letter-spacing: 5px; padding: 10px 8px 5px; border-bottom: 1.5px solid #222; line-height: 1.6; height: 28mm; vertical-align: middle; }
+    .r-tag { display: inline-block; border: 1px solid #444; font-size: 8.5pt; padding: 1px 10px; letter-spacing: 1px; font-weight: 500; margin-top: 4px; }
 
-    /* 일반 행 */
-    .r-row td { border-bottom: 0.5px solid #ccc; padding: 6px 0 6px 8px; font-size: 10pt; vertical-align: middle; }
+    /* 일반 행 — height로 균등 분배 */
+    .r-row td { border-bottom: 0.5px solid #ccc; padding: 0 0 0 8px; font-size: 10.5pt; vertical-align: middle; height: 14mm; }
     .r-key { width: 34%; letter-spacing: 1.5px; color: #222; white-space: nowrap; }
-    .r-bar { width: 4px; padding: 0 !important; border-left: 1.5px solid #333; }
-    .r-val { font-weight: 700; padding-left: 8px !important; font-size: 10.5pt; letter-spacing: 0.3px; }
+    .r-bar { width: 5px; padding: 0 !important; border-left: 1.5px solid #333; }
+    .r-val { font-weight: 700; padding-left: 10px !important; font-size: 11pt; letter-spacing: 0.3px; }
     .r-mono { font-family: 'Courier New', monospace; font-size: 8.5pt; font-weight: 400; letter-spacing: 0; }
 
     /* 금액 강조 행 */
-    .r-hl td { background: #ebebeb; }
-    .r-amount { font-size: 13pt; font-weight: 700; }
+    .r-hl td { background: #e8e8e8; }
+    .r-amount { font-size: 14pt; font-weight: 700; }
 
     /* 하단 footer */
-    .r-footer td { text-align: center; font-size: 10pt; padding: 9px 8px; border-top: 1.5px solid #222; font-weight: 500; letter-spacing: 0.5px; }
+    .r-footer td { text-align: center; font-size: 10.5pt; padding: 0 8px; border-top: 1.5px solid #222; font-weight: 500; letter-spacing: 0.5px; height: 16mm; vertical-align: middle; }
   `;
 
   function oneReceipt(label, f) {
